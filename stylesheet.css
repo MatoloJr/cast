@@ -56,8 +56,11 @@
 }
 
 .dac-select-mark {
-  min-width: 16px;
+  min-width: 22px;
+  font-family: monospace;
   font-weight: 600;
+  font-size: 0.95em;
+  padding-top: 1px;
 }
 
 .dac-cast-device-name {

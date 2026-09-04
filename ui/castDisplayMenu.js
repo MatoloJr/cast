@@ -356,11 +356,14 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         try {
             if (forceRefresh)
                 await this._cast.refresh();
-            this._devices = await this._cast.listDevices();
+            const devices = await this._cast.listDevices();
+            // Keep prior list on transient empty results so selection is not wiped.
+            if (devices.length || !this._devices.length)
+                this._devices = devices;
         } catch (e) {
             _warn('listDevices failed', e);
-            this._devices = [];
             _notify(_('Cast Display'), _('Could not list cast devices'));
+            // Leave existing _devices / selection intact on error.
         }
         this._pruneSelection();
         this._rebuildBody();
@@ -368,6 +371,9 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
     }
 
     _pruneSelection() {
+        // Do not clear selection on a transient empty list (discovery race).
+        if (!this._devices.length)
+            return;
         const known = new Set(this._devices.map(d => d.id));
         for (const id of [...this._selectedIds]) {
             if (!known.has(id))
@@ -379,6 +385,9 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         if (!this._bodyBox)
             return;
 
+        this._deviceRowById.clear();
+        this._selectHint = null;
+        this._connectBtn = null;
         this._bodyBox.destroy_all_children();
 
         if (!this._isActivated()) {
@@ -408,6 +417,10 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
     }
 
     _buildIdleDevicePicker() {
+        this._deviceRowById.clear();
+        this._selectHint = null;
+        this._connectBtn = null;
+
         const header = new St.BoxLayout({
             style_class: 'dac-cast-header',
             x_expand: true,
@@ -459,33 +472,29 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
             this._bodyBox.add_child(list);
         }
 
-        const count = this._selectedIds.size;
-        const hint = new St.Label({
-            text: count > 1
-                ? _('Multiple devices selected — advanced features after connect')
-                : _('Select one or more devices, then Connect'),
+        this._selectHint = new St.Label({
+            text: '',
             style_class: 'dim-label dac-select-hint',
         });
-        hint.clutter_text.line_wrap = true;
-        this._bodyBox.add_child(hint);
+        this._selectHint.clutter_text.line_wrap = true;
+        this._bodyBox.add_child(this._selectHint);
 
-        const connectLabel = count > 1
-            ? _('Connect (%d)').format(count)
-            : _('Connect');
-        const connectBtn = new St.Button({
+        this._connectBtn = new St.Button({
             style_class: 'button dac-connect-button',
-            label: connectLabel,
+            label: _('Connect'),
             x_expand: true,
             can_focus: true,
-            reactive: count > 0,
         });
-        if (count === 0)
-            connectBtn.add_style_class_name('dac-connect-disabled');
-        connectBtn.connect('clicked', () => {
+        this._connectBtn.connect('clicked', () => {
             this._connectSelected().catch(e =>
                 _warn('connectSelected failed', e));
         });
-        this._bodyBox.add_child(connectBtn);
+        this._bodyBox.add_child(this._connectBtn);
+        this._updateSelectionChrome();
+    }
+
+    _checkboxMark(selected) {
+        return selected ? '[x]' : '[ ]';
     }
 
     _createSelectableDeviceRow(device) {
@@ -496,7 +505,7 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         });
 
         const mark = new St.Label({
-            text: selected ? '✓' : '○',
+            text: this._checkboxMark(selected),
             style_class: 'dac-select-mark',
         });
         inner.add_child(mark);
@@ -535,6 +544,8 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         row.connect('clicked', () => {
             this._toggleDeviceSelection(device);
         });
+
+        this._deviceRowById.set(device.id, {row, mark, device});
         return row;
     }
 
@@ -542,7 +553,7 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         const id = device.id;
         if (this._selectedIds.has(id)) {
             this._selectedIds.delete(id);
-            this._rebuildBody();
+            this._refreshSelectionVisuals();
             return;
         }
 
@@ -551,18 +562,52 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         if (isMiracast) {
             this._selectedIds.clear();
             this._selectedIds.add(id);
-            this._rebuildBody();
+            this._refreshSelectionVisuals();
             return;
         }
 
-        // Drop miracast if selecting chromecast.
+        // Drop miracast if selecting chromecast; keep other chromecasts.
         for (const selectedId of [...this._selectedIds]) {
             const d = this._devices.find(x => x.id === selectedId);
             if (d?.protocol === 'miracast' || selectedId.startsWith('miracast:'))
                 this._selectedIds.delete(selectedId);
         }
         this._selectedIds.add(id);
-        this._rebuildBody();
+        this._refreshSelectionVisuals();
+    }
+
+    _refreshSelectionVisuals() {
+        for (const [id, entry] of this._deviceRowById) {
+            const selected = this._selectedIds.has(id);
+            if (entry.mark)
+                entry.mark.text = this._checkboxMark(selected);
+            if (entry.row) {
+                if (selected)
+                    entry.row.add_style_class_name('dac-cast-device-selected');
+                else
+                    entry.row.remove_style_class_name('dac-cast-device-selected');
+            }
+        }
+        this._updateSelectionChrome();
+    }
+
+    _updateSelectionChrome() {
+        const count = this._selectedIds.size;
+        if (this._selectHint) {
+            this._selectHint.text = count > 1
+                ? _('Multiple devices selected — advanced features after connect')
+                : _('Select one or more devices, then Connect');
+        }
+        if (this._connectBtn) {
+            this._connectBtn.label = count > 1
+                ? _('Connect (%d)').format(count)
+                : _('Connect');
+            this._connectBtn.reactive = count > 0;
+            if (count === 0)
+                this._connectBtn.add_style_class_name('dac-connect-disabled');
+            else
+                this._connectBtn.remove_style_class_name('dac-connect-disabled');
+        }
     }
 
     _protocolLabel(protocol) {
@@ -873,6 +918,20 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         await this._startCastSelected(selected);
     }
 
+    _closeQuickSettingsForPortal() {
+        try {
+            this.menu.close(true);
+        } catch (e) {
+            _warn('menu.close failed', e);
+        }
+        try {
+            if (typeof Main.panel.closeQuickSettings === 'function')
+                Main.panel.closeQuickSettings();
+        } catch (e) {
+            _warn('closeQuickSettings failed', e);
+        }
+    }
+
     async _startCastSelected(devices) {
         if (!this._cast.available) {
             _notify(_('Cast Display'), _('Cast helper is not running'));
@@ -883,6 +942,13 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         try {
             this._settings.set_string('last-cast-device', devices[0].id);
         } catch (_) { /* ignore */ }
+
+        // Close QS so the xdg-desktop-portal share dialog can appear and focus.
+        this._closeQuickSettingsForPortal();
+        _notify(
+            _('Cast Display'),
+            _('Approve screen share to start casting…')
+        );
 
         await this._maybeEnablePresentationForCast();
 
