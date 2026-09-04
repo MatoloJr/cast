@@ -25,12 +25,13 @@ done
 
 if ((${#need_pkgs[@]})); then
   echo "==> Missing packages: ${need_pkgs[*]}"
-  if command -v sudo >/dev/null 2>&1; then
+  if [[ -t 0 ]] && command -v sudo >/dev/null 2>&1; then
     sudo apt-get update
     sudo apt-get install -y "${need_pkgs[@]}"
   else
-    echo "Install them manually, then re-run this script." >&2
-    exit 1
+    echo "WARNING: cannot install system packages non-interactively."
+    echo "Run: sudo apt-get install -y ${need_pkgs[*]}"
+    echo "Continuing with Python venv install…"
   fi
 fi
 
