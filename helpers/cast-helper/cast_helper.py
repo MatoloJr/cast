@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
-"""Cast Display session helper — Chromecast discovery and desktop mirroring."""
+"""Cast Display session helper — Chromecast + Miracast (GND) bridge."""
 
 from __future__ import annotations
 
+import http.server
 import ipaddress
 import logging
 import os
 import signal
 import socket
+import socketserver
 import subprocess
 import sys
 import threading
 import time
 import traceback
 import uuid
+from collections import deque
 from shutil import which
 from typing import Any, Callable, Optional
 
@@ -33,6 +36,9 @@ PORTAL_PATH = "/org/freedesktop/portal/desktop"
 SCREENCAST_IFACE = "org.freedesktop.portal.ScreenCast"
 REQUEST_IFACE = "org.freedesktop.portal.Request"
 
+MIRACAST_OPEN_ID = "miracast:gnome-network-displays"
+DISCOVERY_INTERVAL_SEC = 12
+
 
 def _sender_token(bus: dbus.SessionBus) -> str:
     unique = bus.get_unique_name()
@@ -50,7 +56,6 @@ def _lan_ip() -> str:
             return ip
     except OSError:
         pass
-
     try:
         for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
             ip = info[4][0]
@@ -100,9 +105,26 @@ def _encoder_chain() -> Optional[str]:
     return None
 
 
-class PortalScreenCast:
-    """xdg-desktop-portal ScreenCast → PipeWire node + fd."""
+def _gnd_available() -> bool:
+    return which("gnome-network-displays") is not None
 
+
+def _launch_gnome_network_displays() -> None:
+    exe = which("gnome-network-displays")
+    if not exe:
+        raise RuntimeError(
+            "gnome-network-displays is not installed. "
+            "Install it with: sudo apt install gnome-network-displays"
+        )
+    subprocess.Popen(
+        [exe],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+
+class PortalScreenCast:
     def __init__(self, bus: dbus.SessionBus):
         self._bus = bus
         self._portal = bus.get_object(PORTAL_BUS, PORTAL_PATH)
@@ -124,7 +146,6 @@ class PortalScreenCast:
         request_path = (
             f"/org/freedesktop/portal/desktop/request/{self._sender}/{request_token}"
         )
-
         done = threading.Event()
         result: dict[str, Any] = {"response": None, "results": None}
 
@@ -166,7 +187,6 @@ class PortalScreenCast:
             options={"session_handle_token": session_token},
         )
         self._session = str(results["session_handle"])
-
         self._call_with_response(
             self._portal.SelectSources,
             self._session,
@@ -176,7 +196,6 @@ class PortalScreenCast:
                 "cursor_mode": dbus.UInt32(2),
             },
         )
-
         start_results = self._call_with_response(
             self._portal.Start,
             self._session,
@@ -187,16 +206,17 @@ class PortalScreenCast:
         streams = start_results.get("streams")
         if not streams:
             raise RuntimeError("Portal returned no streams")
-
-        first = streams[0]
-        self._node_id = int(first[0])
-
+        self._node_id = int(streams[0][0])
         empty = dbus.Dictionary(signature="sv")
         fd_list = self._portal.OpenPipeWireRemote(
             self._session, empty, dbus_interface=SCREENCAST_IFACE
         )
         self._pw_fd = int(fd_list.take())
         return self._pw_fd, self._node_id
+
+    def release_fd(self) -> None:
+        """Transfer FD ownership to the pipeline; portal must not close it."""
+        self._pw_fd = None
 
     def stop(self) -> None:
         if self._pw_fd is not None:
@@ -208,22 +228,96 @@ class PortalScreenCast:
         if self._session:
             try:
                 session_obj = self._bus.get_object(PORTAL_BUS, self._session)
-                session_obj.Close(
-                    dbus_interface="org.freedesktop.portal.Session"
-                )
+                session_obj.Close(dbus_interface="org.freedesktop.portal.Session")
             except Exception as exc:
                 LOG.debug("Close portal session: %s", exc)
             self._session = None
         self._node_id = None
 
 
+class LiveMpegTsServer:
+    """Multi-client HTTP server streaming live MPEG-TS bytes."""
+
+    def __init__(self, port: int):
+        self.port = port
+        self._chunks: deque[bytes] = deque(maxlen=512)
+        self._cond = threading.Condition()
+        self._closed = False
+        self._httpd: Optional[socketserver.ThreadingTCPServer] = None
+        self._thread: Optional[threading.Thread] = None
+
+    def start(self) -> None:
+        chunks = self._chunks
+        cond = self._cond
+        closed_flag = lambda: self._closed  # noqa: E731
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, fmt, *args):
+                LOG.debug("http: " + fmt, *args)
+
+            def do_GET(self):  # noqa: N802
+                if self.path not in ("/", "/stream.ts", "/stream.mp2t"):
+                    self.send_error(404)
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", "video/mp2t")
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Connection", "close")
+                self.end_headers()
+                try:
+                    while not closed_flag():
+                        with cond:
+                            while not chunks and not closed_flag():
+                                cond.wait(timeout=1.0)
+                            if closed_flag():
+                                break
+                            data = b"".join(chunks)
+                            chunks.clear()
+                        if data:
+                            self.wfile.write(data)
+                            self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError, OSError):
+                    pass
+
+        self._httpd = socketserver.ThreadingTCPServer(
+            ("0.0.0.0", self.port), Handler
+        )
+        self._httpd.daemon_threads = True
+        self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
+        self._thread.start()
+
+    def feed(self, data: bytes) -> None:
+        if not data or self._closed:
+            return
+        with self._cond:
+            self._chunks.append(data)
+            self._cond.notify_all()
+
+    def stop(self) -> None:
+        self._closed = True
+        with self._cond:
+            self._cond.notify_all()
+        if self._httpd:
+            try:
+                self._httpd.shutdown()
+            except Exception:
+                pass
+            try:
+                self._httpd.server_close()
+            except Exception:
+                pass
+        self._httpd = None
+
+
 class StreamPipeline:
-    """Capture → H.264 MPEG-TS HTTP. Prefers GStreamer; falls back to ffmpeg."""
+    """Capture → H.264 MPEG-TS HTTP (GStreamer or ffmpeg + multi-client server)."""
 
     def __init__(self):
         self._pipeline = None
         self._gst_proc: Optional[subprocess.Popen] = None
         self._ffmpeg_proc: Optional[subprocess.Popen] = None
+        self._reader: Optional[threading.Thread] = None
+        self._http: Optional[LiveMpegTsServer] = None
         self._port: Optional[int] = None
         self._owned_fd: Optional[int] = None
         self._use_ffmpeg = False
@@ -242,11 +336,24 @@ class StreamPipeline:
                 return self._port
             except Exception:
                 LOG.exception("GStreamer pipeline failed; trying ffmpeg fallback")
-                self.stop()
+                # Do NOT close portal FD — only tear down GST objects.
+                self._abort_gst_only()
                 self._port = _pick_free_port()
-                self._owned_fd = pw_fd
         self._start_ffmpeg(pw_fd, node_id)
         return self._port
+
+    def _abort_gst_only(self) -> None:
+        if self._pipeline is not None:
+            try:
+                import gi
+
+                gi.require_version("Gst", "1.0")
+                from gi.repository import Gst
+
+                self._pipeline.set_state(Gst.State.NULL)
+            except Exception:
+                pass
+            self._pipeline = None
 
     def _start_gst(self, pw_fd: int, node_id: int, enc: str) -> None:
         import gi
@@ -270,7 +377,6 @@ class StreamPipeline:
         if ret == Gst.StateChangeReturn.FAILURE:
             self._pipeline = None
             raise RuntimeError("Failed to start GStreamer pipeline")
-
         bus = self._pipeline.get_bus()
         msg = bus.timed_pop_filtered(
             3 * Gst.SECOND,
@@ -293,8 +399,11 @@ class StreamPipeline:
                 "ffmpeg not found; install ffmpeg or gstreamer1.0-plugins-ugly"
             )
 
-        url = f"http://0.0.0.0:{self._port}/stream.ts"
-        LOG.info("Starting ffmpeg HTTP stream on %s", url)
+        assert self._port is not None
+        self._http = LiveMpegTsServer(self._port)
+        self._http.start()
+        self._use_ffmpeg = True
+        LOG.info("Starting ffmpeg → multi-client HTTP on port %s", self._port)
 
         gst_cmd = [
             "gst-launch-1.0",
@@ -335,12 +444,9 @@ class StreamPipeline:
             "30",
             "-f",
             "mpegts",
-            "-listen",
-            "1",
-            url,
+            "pipe:1",
         ]
 
-        self._use_ffmpeg = True
         self._gst_proc = subprocess.Popen(
             gst_cmd,
             stdout=subprocess.PIPE,
@@ -351,9 +457,25 @@ class StreamPipeline:
         self._ffmpeg_proc = subprocess.Popen(
             ff_cmd,
             stdin=self._gst_proc.stdout,
+            stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
         self._gst_proc.stdout.close()
+
+        def _reader():
+            assert self._ffmpeg_proc and self._ffmpeg_proc.stdout
+            try:
+                while True:
+                    data = self._ffmpeg_proc.stdout.read(64 * 1024)
+                    if not data:
+                        break
+                    if self._http:
+                        self._http.feed(data)
+            except Exception:
+                LOG.debug("ffmpeg reader ended", exc_info=True)
+
+        self._reader = threading.Thread(target=_reader, daemon=True)
+        self._reader.start()
 
         time.sleep(0.8)
         if self._gst_proc.poll() is not None:
@@ -373,18 +495,7 @@ class StreamPipeline:
         return f"http://{lan_ip}:{self._port}/"
 
     def stop(self) -> None:
-        if self._pipeline is not None:
-            try:
-                import gi
-
-                gi.require_version("Gst", "1.0")
-                from gi.repository import Gst
-
-                self._pipeline.set_state(Gst.State.NULL)
-            except Exception as exc:
-                LOG.debug("pipeline stop: %s", exc)
-            self._pipeline = None
-
+        self._abort_gst_only()
         for proc in (self._ffmpeg_proc, self._gst_proc):
             if proc is None:
                 continue
@@ -398,7 +509,12 @@ class StreamPipeline:
                 LOG.debug("proc stop: %s", exc)
         self._ffmpeg_proc = None
         self._gst_proc = None
-
+        if self._http:
+            try:
+                self._http.stop()
+            except Exception:
+                pass
+            self._http = None
         if self._owned_fd is not None:
             try:
                 os.close(self._owned_fd)
@@ -423,7 +539,6 @@ class ChromecastController:
             browser.stop_discovery()
         except Exception:
             pass
-
         with self._lock:
             self._casts = {}
             for cc in chromecasts:
@@ -435,14 +550,21 @@ class ChromecastController:
                     "host": cc.cast_info.host,
                     "port": cc.cast_info.port,
                     "online": True,
+                    "protocol": "chromecast",
                     "_cc": cc,
                 }
         LOG.info("Discovered %d Chromecast device(s)", len(self._casts))
 
-    def list_devices(self) -> list[tuple[str, str, str, bool]]:
+    def list_entries(self) -> list[tuple[str, str, str, str, bool]]:
         with self._lock:
             return [
-                (d["id"], d["name"], d["model"], bool(d["online"]))
+                (
+                    d["id"],
+                    d["name"],
+                    d["model"],
+                    "chromecast",
+                    bool(d["online"]),
+                )
                 for d in self._casts.values()
             ]
 
@@ -453,7 +575,6 @@ class ChromecastController:
             info = self._casts.get(device_id)
             if info and info.get("_cc"):
                 return info["_cc"]
-
         self.refresh(timeout=4.0)
         with self._lock:
             info = self._casts.get(device_id)
@@ -461,7 +582,6 @@ class ChromecastController:
                 return info["_cc"]
             if not info:
                 raise RuntimeError(f"Device not found: {device_id}")
-
         return pychromecast.Chromecast(
             host=info["host"], port=info.get("port") or 8009
         )
@@ -512,15 +632,35 @@ class CastService(dbus.service.Object):
         self._pipeline: Optional[StreamPipeline] = None
         self._status = ("idle", "", "", "")
         self._op_lock = threading.Lock()
+        self._gnd_proc: Optional[subprocess.Popen] = None
 
-        threading.Thread(target=self._bg_refresh, daemon=True).start()
+        self._discover_once()
+        GLib.timeout_add_seconds(DISCOVERY_INTERVAL_SEC, self._periodic_discover)
 
-    def _bg_refresh(self) -> None:
+    def _periodic_discover(self) -> bool:
+        threading.Thread(target=self._discover_once, daemon=True).start()
+        return True
+
+    def _discover_once(self) -> None:
         try:
             self._cc.refresh()
             GLib.idle_add(self.DevicesChanged)
         except Exception:
-            LOG.exception("Initial discovery failed")
+            LOG.exception("Discovery failed")
+
+    def _unified_devices(self) -> list[tuple[str, str, str, str, bool]]:
+        devices = list(self._cc.list_entries())
+        if _gnd_available():
+            devices.append(
+                (
+                    MIRACAST_OPEN_ID,
+                    "Wireless displays",
+                    "Miracast (gnome-network-displays)",
+                    "miracast",
+                    True,
+                )
+            )
+        return devices
 
     def _set_status(
         self, state: str, device_id: str = "", device_name: str = "", error: str = ""
@@ -534,14 +674,18 @@ class CastService(dbus.service.Object):
 
         GLib.idle_add(emit)
 
-    @dbus.service.method(IFACE, in_signature="", out_signature="a(sssb)")
+    @dbus.service.method(IFACE, in_signature="", out_signature="a(ssssb)")
     def ListDevices(self):
-        return self._cc.list_devices()
+        return self._unified_devices()
 
     @dbus.service.method(IFACE, in_signature="", out_signature="")
     def Refresh(self):
         self._cc.refresh()
         self.DevicesChanged()
+
+    @dbus.service.method(IFACE, in_signature="", out_signature="b")
+    def HasMiracastSupport(self):
+        return bool(_gnd_available())
 
     @dbus.service.method(IFACE, in_signature="ss", out_signature="")
     def CastDesktop(self, device_id: str, source: str):
@@ -558,14 +702,16 @@ class CastService(dbus.service.Object):
 
         def work():
             try:
-                self._cast_desktop_impl(device_id, source)
+                if device_id.startswith("miracast:"):
+                    self._cast_miracast_impl(device_id)
+                else:
+                    self._cast_desktop_impl(device_id, source)
             except Exception as exc:
                 result["exc"] = exc
             finally:
                 done.set()
 
         threading.Thread(target=work, daemon=True).start()
-
         ctx = GLib.MainContext.default()
         while not done.is_set():
             ctx.iteration(True)
@@ -581,11 +727,26 @@ class CastService(dbus.service.Object):
             str(exc) or "Cast failed",
         )
 
+    def _cast_miracast_impl(self, device_id: str) -> None:
+        name = "Wireless displays"
+        try:
+            self._teardown_stream(stop_cast=True)
+            self._set_status("connecting", device_id, name, "")
+            _launch_gnome_network_displays()
+            # GND owns the Miracast session UI; mark as casting bridge open.
+            self._set_status("casting", device_id, name, "")
+            GLib.idle_add(self.DevicesChanged)
+        except Exception as exc:
+            LOG.exception("Miracast open failed")
+            err = str(exc)
+            self._set_status("error", device_id, name, err)
+            raise dbus.DBusException("org.cast.tools.Cast1.Failed", err)
+
     def _cast_desktop_impl(self, device_id: str, source: str) -> None:
         device_name = device_id
         try:
             self._teardown_stream(stop_cast=True)
-            devices = {d[0]: d for d in self._cc.list_devices()}
+            devices = {d[0]: d for d in self._cc.list_entries()}
             if device_id in devices:
                 device_name = devices[device_id][1]
             self._set_status("connecting", device_id, device_name, "")
@@ -598,7 +759,7 @@ class CastService(dbus.service.Object):
             pipeline = StreamPipeline()
             pipeline.start(pw_fd, node_id)
             self._pipeline = pipeline
-            portal._pw_fd = None
+            portal.release_fd()
 
             lan = _lan_ip()
             url = pipeline.stream_url(lan)
@@ -660,7 +821,6 @@ def main() -> int:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
     bus = dbus.SessionBus()
     service = CastService(bus)
@@ -675,7 +835,6 @@ def main() -> int:
 
     signal.signal(signal.SIGTERM, handle_signal)
     signal.signal(signal.SIGINT, handle_signal)
-
     LOG.info("Cast helper listening on %s", BUS_NAME)
     loop.run()
     return 0

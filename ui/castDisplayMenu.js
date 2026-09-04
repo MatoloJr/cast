@@ -131,15 +131,19 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
                 _warn('Cast availability refresh failed', e));
         });
         this._disconnectCastDevices = this._cast.connectDevicesChanged(() => {
-            this._refreshDevices().catch(e =>
+            this._refreshDevices(false).catch(e =>
                 _warn('Cast devices refresh failed', e));
         });
         this._disconnectCastSession = this._cast.connectSessionChanged(status => {
             this._onCastSession(status);
         });
 
-        this.connect('clicked', () => {
-            // Tile click opens menu (toggleMode false); ignore checked flips.
+        // Windows Cast–like: scan when the menu opens
+        this.menu.connect('open-state-changed', (_menu, isOpen) => {
+            if (!isOpen || this._destroyed)
+                return;
+            this._onCastMenuOpened().catch(e =>
+                _warn('Cast menu open scan failed', e));
         });
 
         this._refreshMonitors().catch(e =>
@@ -147,6 +151,20 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         this._syncPresentationSwitch();
         this._refreshCastUi().catch(e =>
             _warn('Initial cast refresh failed', e));
+    }
+
+    async _onCastMenuOpened() {
+        this._updateCastStatusLabel(_('Searching for displays…'));
+        await this._cast.ensureStarted();
+        if (!this._cast.available) {
+            this._updateCastStatusLabel(
+                _('Cast helper not running. Run ./install.sh, then reopen.')
+            );
+            this._rebuildCastList();
+            return;
+        }
+        await this._refreshDevices(true);
+        this._applyCastStatusToUi();
     }
 
     _buildActionGrid() {
@@ -347,7 +365,7 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
             this._castStatus = {state: 'idle', deviceId: '', deviceName: '', error: ''};
             this._rebuildCastList();
             this._updateCastStatusLabel(
-                _('Cast helper not running. Run install-helper.sh, then Refresh.')
+                _('Cast helper not running. Run ./install.sh, then reopen.')
             );
             this._updateSubtitle();
             this.checked = false;
@@ -394,14 +412,27 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         const activeId = this._castStatus.deviceId;
 
         if (casting && activeId) {
-            const row = this._createActiveCastRow();
-            this._castListBox.add_child(row);
+            this._castListBox.add_child(this._createActiveCastRow());
             return;
+        }
+
+        let lastId = '';
+        try {
+            lastId = this._settings.get_string('last-cast-device') || '';
+        } catch (_) { /* ignore */ }
+
+        if (lastId) {
+            const last = this._devices.find(d => d.id === lastId);
+            if (last) {
+                this._castListBox.add_child(
+                    this._createDeviceRow(last, {reconnect: true})
+                );
+            }
         }
 
         if (!this._devices.length) {
             const empty = new St.Label({
-                text: _('No Chromecast devices found on the LAN'),
+                text: _('No displays found. Check Wi‑Fi / Cast / Miracast.'),
                 style_class: 'dim-label',
             });
             this._castListBox.add_child(empty);
@@ -409,11 +440,19 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         }
 
         for (const device of this._devices) {
+            if (lastId && device.id === lastId)
+                continue;
             this._castListBox.add_child(this._createDeviceRow(device));
         }
     }
 
-    _createDeviceRow(device) {
+    _protocolLabel(protocol) {
+        if (protocol === 'miracast')
+            return _('Wireless display');
+        return _('Cast');
+    }
+
+    _createDeviceRow(device, {reconnect = false} = {}) {
         const row = new St.BoxLayout({
             style_class: 'dac-cast-device-row',
             x_expand: true,
@@ -424,30 +463,35 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
             x_expand: true,
         });
         const name = new St.Label({
-            text: device.name || device.id,
+            text: reconnect
+                ? _('Reconnect · %s').format(device.name || device.id)
+                : (device.name || device.id),
             style_class: 'dac-cast-device-name',
         });
         name.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         textBox.add_child(name);
-        if (device.model) {
-            const model = new St.Label({
-                text: device.model,
-                style_class: 'dim-label',
-            });
-            textBox.add_child(model);
-        }
+
+        const metaParts = [];
+        metaParts.push(this._protocolLabel(device.protocol));
+        if (device.model)
+            metaParts.push(device.model);
+        const meta = new St.Label({
+            text: metaParts.join(' · '),
+            style_class: 'dim-label',
+        });
+        textBox.add_child(meta);
         row.add_child(textBox);
 
-        const mirrorBtn = new St.Button({
+        const connectBtn = new St.Button({
             style_class: 'button dac-cast-action',
-            label: _('Mirror'),
+            label: reconnect ? _('Reconnect') : _('Connect'),
             can_focus: true,
         });
-        mirrorBtn.connect('clicked', () => {
+        connectBtn.connect('clicked', () => {
             this._startCast(device).catch(e =>
                 _warn('startCast failed', e));
         });
-        row.add_child(mirrorBtn);
+        row.add_child(connectBtn);
         return row;
     }
 
@@ -457,7 +501,7 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
             x_expand: true,
         });
         const label = new St.Label({
-            text: _('Casting to %s').format(
+            text: _('Connected to %s').format(
                 this._castStatus.deviceName || this._castStatus.deviceId
             ),
             style_class: 'dac-cast-device-name',
@@ -468,7 +512,7 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
 
         const stopBtn = new St.Button({
             style_class: 'button dac-cast-action',
-            label: _('Stop'),
+            label: _('Disconnect'),
             can_focus: true,
         });
         stopBtn.connect('clicked', () => {
@@ -723,7 +767,7 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
     _updateSubtitle() {
         const s = this._castStatus;
         if (s.state === 'casting') {
-            this.subtitle = _('Casting to %s').format(s.deviceName || s.deviceId);
+            this.subtitle = _('Connected to %s').format(s.deviceName || s.deviceId);
             return;
         }
         if (s.state === 'connecting') {

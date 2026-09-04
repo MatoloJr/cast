@@ -4,16 +4,16 @@ overview: Phase 3 cleans the repo, ships a one-command install + GitHub release 
 todos:
   - id: p3-hygiene-bugs
     content: Cleanup unused/tracked junk; fix PipeWire fd ownership + HTTP serve; metadata v3
-    status: in_progress
+    status: completed
   - id: p3-windows-ux
     content: Auto-scan on menu open, Connect/Disconnect, last-device reconnect, continuous discovery
-    status: pending
+    status: completed
   - id: p3-miracast
     content: Unified device list with protocol; gnome-network-displays Miracast soft integration
-    status: pending
+    status: completed
   - id: p3-install-pack
     content: Single install.sh + Makefile pack/uninstall; fold install-helper
-    status: pending
+    status: in_progress
   - id: p3-readme
     content: Rewrite comprehensive README (product, Windows parity, install, troubleshoot, roadmap)
     status: pending
