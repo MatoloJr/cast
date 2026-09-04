@@ -14,7 +14,7 @@ mkdir -p "$INSTALL_DIR" "$UNIT_DIR" "$DBUS_DIR"
 
 # System packages (best-effort; may need sudo)
 need_pkgs=()
-for pkg in python3-venv python3-gi python3-dbus \
+for pkg in python3-venv python3-gi python3-dbus ffmpeg \
            gir1.2-gstreamer-1.0 gstreamer1.0-tools \
            gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
            gstreamer1.0-plugins-ugly gstreamer1.0-pipewire; do

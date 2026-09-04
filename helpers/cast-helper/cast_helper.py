@@ -14,6 +14,7 @@ import threading
 import time
 import traceback
 import uuid
+from shutil import which
 from typing import Any, Callable, Optional
 
 import dbus
@@ -34,13 +35,11 @@ REQUEST_IFACE = "org.freedesktop.portal.Request"
 
 
 def _sender_token(bus: dbus.SessionBus) -> str:
-    # Portal request paths use the unique name with ':' stripped and '.' → '_'
-    unique = bus.get_unique_name()  # e.g. :1.42
+    unique = bus.get_unique_name()
     return unique[1:].replace(".", "_")
 
 
 def _lan_ip() -> str:
-    """Best-effort LAN IPv4 the Chromecast can reach."""
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(0.5)
@@ -72,26 +71,33 @@ def _pick_free_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def _encoder_chain() -> str:
-    """Prefer VA-API when available, else software x264."""
+def _gst_has(element: str) -> bool:
     try:
         out = subprocess.run(
-            ["gst-inspect-1.0", "vah264enc"],
+            ["gst-inspect-1.0", element],
             capture_output=True,
             text=True,
             timeout=5,
             check=False,
         )
-        if out.returncode == 0:
-            return (
-                "vah264enc ! video/x-h264,profile=constrained-baseline ! h264parse"
-            )
+        return out.returncode == 0
     except (OSError, subprocess.TimeoutExpired):
-        pass
-    return (
-        "x264enc tune=zerolatency speed-preset=ultrafast bitrate=4000 "
-        "key-int-max=30 ! video/x-h264,profile=constrained-baseline ! h264parse"
-    )
+        return False
+
+
+def _encoder_chain() -> Optional[str]:
+    if _gst_has("vah264enc"):
+        return "vah264enc ! video/x-h264,profile=constrained-baseline ! h264parse"
+    if _gst_has("x264enc"):
+        return (
+            "x264enc tune=zerolatency speed-preset=ultrafast bitrate=4000 "
+            "key-int-max=30 ! video/x-h264,profile=constrained-baseline ! h264parse"
+        )
+    if _gst_has("openh264enc"):
+        return (
+            "openh264enc ! video/x-h264,profile=constrained-baseline ! h264parse"
+        )
+    return None
 
 
 class PortalScreenCast:
@@ -154,7 +160,6 @@ class PortalScreenCast:
         return dict(result["results"] or {})
 
     def start(self, multiple: bool = False) -> tuple[int, int]:
-        """Return (pipewire_fd, node_id). Shows the portal picker UI."""
         session_token = uuid.uuid4().hex
         results = self._call_with_response(
             self._portal.CreateSession,
@@ -167,8 +172,8 @@ class PortalScreenCast:
             self._session,
             options={
                 "multiple": bool(multiple),
-                "types": dbus.UInt32(1),  # monitor
-                "cursor_mode": dbus.UInt32(2),  # embedded
+                "types": dbus.UInt32(1),
+                "cursor_mode": dbus.UInt32(2),
             },
         )
 
@@ -213,26 +218,43 @@ class PortalScreenCast:
 
 
 class StreamPipeline:
-    """GStreamer: pipewiresrc → H.264 → MPEG-TS → souphttpserver."""
+    """Capture → H.264 MPEG-TS HTTP. Prefers GStreamer; falls back to ffmpeg."""
 
     def __init__(self):
         self._pipeline = None
+        self._gst_proc: Optional[subprocess.Popen] = None
+        self._ffmpeg_proc: Optional[subprocess.Popen] = None
         self._port: Optional[int] = None
+        self._owned_fd: Optional[int] = None
+        self._use_ffmpeg = False
 
     @property
     def port(self) -> Optional[int]:
         return self._port
 
     def start(self, pw_fd: int, node_id: int) -> int:
+        self._port = _pick_free_port()
+        self._owned_fd = pw_fd
+        enc = _encoder_chain()
+        if enc and _gst_has("souphttpserver"):
+            try:
+                self._start_gst(pw_fd, node_id, enc)
+                return self._port
+            except Exception:
+                LOG.exception("GStreamer pipeline failed; trying ffmpeg fallback")
+                self.stop()
+                self._port = _pick_free_port()
+                self._owned_fd = pw_fd
+        self._start_ffmpeg(pw_fd, node_id)
+        return self._port
+
+    def _start_gst(self, pw_fd: int, node_id: int, enc: str) -> None:
         import gi
 
         gi.require_version("Gst", "1.0")
         from gi.repository import Gst
 
         Gst.init(None)
-
-        self._port = _pick_free_port()
-        enc = _encoder_chain()
         desc = (
             f"pipewiresrc fd={pw_fd} path={node_id} do-timestamp=true ! "
             f"videoconvert ! videoscale ! "
@@ -242,9 +264,7 @@ class StreamPipeline:
             f"mpegtsmux alignment=7 ! "
             f"souphttpserver service={self._port}"
         )
-        LOG.info("Starting pipeline on port %s", self._port)
-        LOG.debug("Pipeline: %s", desc)
-
+        LOG.info("Starting GStreamer pipeline on port %s", self._port)
         self._pipeline = Gst.parse_launch(desc)
         ret = self._pipeline.set_state(Gst.State.PLAYING)
         if ret == Gst.StateChangeReturn.FAILURE:
@@ -260,25 +280,133 @@ class StreamPipeline:
         )
         if msg and msg.type == Gst.MessageType.ERROR:
             err, debug = msg.parse_error()
-            self.stop()
             raise RuntimeError(f"GStreamer error: {err} ({debug})")
 
-        return self._port
+    def _start_ffmpeg(self, pw_fd: int, node_id: int) -> None:
+        if not _gst_has("pipewiresrc") or not _gst_has("y4menc"):
+            raise RuntimeError(
+                "Need GStreamer pipewiresrc/y4menc, or install "
+                "gstreamer1.0-plugins-ugly for x264enc"
+            )
+        if not which("ffmpeg"):
+            raise RuntimeError(
+                "ffmpeg not found; install ffmpeg or gstreamer1.0-plugins-ugly"
+            )
+
+        url = f"http://0.0.0.0:{self._port}/stream.ts"
+        LOG.info("Starting ffmpeg HTTP stream on %s", url)
+
+        gst_cmd = [
+            "gst-launch-1.0",
+            "-q",
+            "pipewiresrc",
+            f"fd={pw_fd}",
+            f"path={node_id}",
+            "do-timestamp=true",
+            "!",
+            "videoconvert",
+            "!",
+            "videorate",
+            "!",
+            "video/x-raw,format=I420,framerate=30/1",
+            "!",
+            "y4menc",
+            "!",
+            "fdsink",
+            "fd=1",
+        ]
+        ff_cmd = [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "yuv4mpegpipe",
+            "-i",
+            "pipe:0",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-tune",
+            "zerolatency",
+            "-g",
+            "30",
+            "-f",
+            "mpegts",
+            "-listen",
+            "1",
+            url,
+        ]
+
+        self._use_ffmpeg = True
+        self._gst_proc = subprocess.Popen(
+            gst_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            pass_fds=(pw_fd,),
+        )
+        assert self._gst_proc.stdout is not None
+        self._ffmpeg_proc = subprocess.Popen(
+            ff_cmd,
+            stdin=self._gst_proc.stdout,
+            stderr=subprocess.PIPE,
+        )
+        self._gst_proc.stdout.close()
+
+        time.sleep(0.8)
+        if self._gst_proc.poll() is not None:
+            err = (self._gst_proc.stderr.read() or b"").decode(errors="replace")
+            raise RuntimeError(
+                f"gst-launch exited early: {err or self._gst_proc.returncode}"
+            )
+        if self._ffmpeg_proc.poll() is not None:
+            err = (self._ffmpeg_proc.stderr.read() or b"").decode(errors="replace")
+            raise RuntimeError(
+                f"ffmpeg exited early: {err or self._ffmpeg_proc.returncode}"
+            )
+
+    def stream_url(self, lan_ip: str) -> str:
+        if self._use_ffmpeg:
+            return f"http://{lan_ip}:{self._port}/stream.ts"
+        return f"http://{lan_ip}:{self._port}/"
 
     def stop(self) -> None:
-        if self._pipeline is None:
-            return
-        try:
-            import gi
+        if self._pipeline is not None:
+            try:
+                import gi
 
-            gi.require_version("Gst", "1.0")
-            from gi.repository import Gst
+                gi.require_version("Gst", "1.0")
+                from gi.repository import Gst
 
-            self._pipeline.set_state(Gst.State.NULL)
-        except Exception as exc:
-            LOG.debug("pipeline stop: %s", exc)
-        self._pipeline = None
+                self._pipeline.set_state(Gst.State.NULL)
+            except Exception as exc:
+                LOG.debug("pipeline stop: %s", exc)
+            self._pipeline = None
+
+        for proc in (self._ffmpeg_proc, self._gst_proc):
+            if proc is None:
+                continue
+            try:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+            except Exception as exc:
+                LOG.debug("proc stop: %s", exc)
+        self._ffmpeg_proc = None
+        self._gst_proc = None
+
+        if self._owned_fd is not None:
+            try:
+                os.close(self._owned_fd)
+            except OSError:
+                pass
+            self._owned_fd = None
         self._port = None
+        self._use_ffmpeg = False
 
 
 class ChromecastController:
@@ -334,10 +462,9 @@ class ChromecastController:
             if not info:
                 raise RuntimeError(f"Device not found: {device_id}")
 
-        cast = pychromecast.Chromecast(
+        return pychromecast.Chromecast(
             host=info["host"], port=info.get("port") or 8009
         )
-        return cast
 
     def play_url(self, device_id: str, url: str, content_type: str = "video/mp2t"):
         import pychromecast
@@ -418,7 +545,6 @@ class CastService(dbus.service.Object):
 
     @dbus.service.method(IFACE, in_signature="ss", out_signature="")
     def CastDesktop(self, device_id: str, source: str):
-        """Start mirroring. Runs work off-thread so the portal dialog can respond."""
         device_id = str(device_id)
         source = str(source or "primary")
         if not self._op_lock.acquire(blocking=False):
@@ -440,7 +566,6 @@ class CastService(dbus.service.Object):
 
         threading.Thread(target=work, daemon=True).start()
 
-        # Nested iteration: keep dispatching D-Bus/portal signals while waiting.
         ctx = GLib.MainContext.default()
         while not done.is_set():
             ctx.iteration(True)
@@ -470,15 +595,13 @@ class CastService(dbus.service.Object):
             pw_fd, node_id = portal.start(multiple=multiple)
             self._portal = portal
 
-            # Portal transferred the FD; GStreamer takes ownership via pipewiresrc
             pipeline = StreamPipeline()
-            port = pipeline.start(pw_fd, node_id)
+            pipeline.start(pw_fd, node_id)
             self._pipeline = pipeline
-            # FD transferred to GStreamer; portal must not close it.
             portal._pw_fd = None
 
             lan = _lan_ip()
-            url = f"http://{lan}:{port}/"
+            url = pipeline.stream_url(lan)
             LOG.info("Casting %s → %s (%s)", device_name, url, device_id)
 
             self._cc.play_url(device_id, url, "video/mp2t")
@@ -497,7 +620,7 @@ class CastService(dbus.service.Object):
             self._teardown_stream(stop_cast=True)
             self._set_status("idle", "", "", "")
 
-    @dbus.service.method(IFACE, in_signature="", out_signature="(siss)")
+    @dbus.service.method(IFACE, in_signature="", out_signature="(ssss)")
     def GetStatus(self):
         return self._status
 
@@ -505,7 +628,7 @@ class CastService(dbus.service.Object):
     def DevicesChanged(self):
         pass
 
-    @dbus.service.signal(IFACE, signature="(siss)")
+    @dbus.service.signal(IFACE, signature="(ssss)")
     def SessionChanged(self, status):
         pass
 

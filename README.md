@@ -50,10 +50,13 @@ gdbus call --session -d org.cast.tools.Cast1 -o /org/cast/tools/Cast1 \
 
 `install-helper.sh` will try to install:
 
-- `python3-venv`, `python3-gi`, `python3-dbus`
+- `python3-venv`, `python3-gi`, `python3-dbus`, `ffmpeg`
 - `gstreamer1.0-tools`, `gstreamer1.0-plugins-base`, `gstreamer1.0-plugins-good`
-- `gstreamer1.0-plugins-ugly` (x264), `gstreamer1.0-pipewire`
+- `gstreamer1.0-plugins-ugly` (optional; native `x264enc` path)
+- `gstreamer1.0-pipewire`
 - Optional: `gstreamer1.0-vaapi` for hardware encode
+
+If `x264enc` / `souphttpserver` are missing, the helper falls back to **ffmpeg libx264** over HTTP (recommended on Ubuntu).
 
 ## Install (packaged zip)
 

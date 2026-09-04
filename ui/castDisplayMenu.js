@@ -253,9 +253,10 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
             _('Presentation mode'),
             this._presentation.enabled
         );
-        this._presentationItem.connect('toggled', (item, state) => {
+        this._presentationItem.connect('toggled', item => {
             if (this._syncingPresentation || !this._presentation)
                 return;
+            const state = item.state;
             // Manual toggle takes ownership away from cast auto-presentation.
             this._castOwnedPresentation = false;
             this._presentationBeforeCast = null;

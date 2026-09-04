@@ -4,25 +4,25 @@ overview: Consolidate Phase 1’s two Quick Settings tiles into one Cast Display
 todos:
   - id: rename-consolidate-ui
     content: Rename product to Cast Display; merge Displays + Presentation into one QuickMenuToggle; remove separate Presentation QS tile
-    status: in_progress
+    status: completed
   - id: cast-helper-scaffold
     content: "Scaffold helpers/cast-helper (Python D-Bus service + user unit): ListDevices/Refresh/CastDesktop/Stop via pychromecast"
-    status: pending
+    status: completed
   - id: cast-service-proxy
     content: Add lib/castService.js Gio.DBusProxy; auto-start helper; clear missing-helper UI
-    status: pending
+    status: completed
   - id: cast-section-ui
     content: Add Cast to… section inside the single Cast Display menu (devices, Mirror, Stop, status)
-    status: pending
+    status: completed
   - id: desktop-mirror-pipeline
     content: Ship working PipeWire→H.264→HTTP→play_media path; verify stop/teardown; handle portal/permissions
-    status: pending
+    status: completed
   - id: schema-presentation-hook
     content: Add cast GSettings; auto presentation-mode while casting; toasts on failure
-    status: pending
+    status: completed
   - id: install-verify-e2e
     content: Install script + README; e2e checklist so discovery + mirror + stop work on Ubuntu Wayland
-    status: pending
+    status: completed
 isProject: false
 ---
 
