@@ -18,5 +18,28 @@
         was last enabled. Restored after a Shell restart.
       </description>
     </key>
+    <key name="cast-auto-presentation" type="b">
+      <default>true</default>
+      <summary>Enable presentation mode while casting</summary>
+      <description>
+        When true, starting a cast session enables presentation mode.
+        Stopping cast restores the previous presentation state if the
+        user had not enabled presentation manually.
+      </description>
+    </key>
+    <key name="last-cast-device" type="s">
+      <default>""</default>
+      <summary>Last cast device id</summary>
+      <description>
+        Identifier of the last Chromecast device used for mirroring.
+      </description>
+    </key>
+    <key name="cast-source" type="s">
+      <default>"primary"</default>
+      <summary>Cast capture source</summary>
+      <description>
+        Which screen to capture when mirroring: "primary" or "all".
+      </description>
+    </key>
   </schema>
 </schemalist>
