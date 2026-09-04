@@ -41,5 +41,21 @@
         Which screen to capture when mirroring: "primary" or "all".
       </description>
     </key>
+    <key name="cast-display-enabled" type="b">
+      <default>false</default>
+      <summary>Cast Display feature enabled</summary>
+      <description>
+        Whether the Cast Display Quick Settings tile is turned on
+        (discovery ready). Turning off stops any active cast session.
+      </description>
+    </key>
+    <key name="cast-device-groups" type="s">
+      <default>"{}"</default>
+      <summary>Cast device group assignments</summary>
+      <description>
+        JSON map of cast device id to group letter (A, B, C, …)
+        used when managing multiple connected devices.
+      </description>
+    </key>
   </schema>
 </schemalist>

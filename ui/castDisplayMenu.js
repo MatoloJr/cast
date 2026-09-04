@@ -19,6 +19,19 @@ const GROUP_STYLE_CLASSES = [
     'dac-group-f',
 ];
 
+function _layoutActions() {
+    return [
+        [
+            {label: _('Mirror'), kind: 'mirror'},
+            {label: _('Extend'), kind: 'extend'},
+        ],
+        [
+            {label: _('Main only'), kind: 'main'},
+            {label: _('Secondary only'), kind: 'secondary'},
+        ],
+    ];
+}
+
 function _warn(message, error) {
     if (error)
         console.warn(`[display-and-cast] ${message}: ${error}`);
@@ -34,22 +47,22 @@ function _notify(title, body) {
     }
 }
 
-function _loadGroupMap(settings) {
+function _loadJsonMap(settings, key) {
     try {
-        const raw = settings.get_string('monitor-groups');
+        const raw = settings.get_string(key);
         const parsed = JSON.parse(raw || '{}');
         return parsed && typeof parsed === 'object' ? parsed : {};
     } catch (e) {
-        _warn('Failed to parse monitor-groups', e);
+        _warn(`Failed to parse ${key}`, e);
         return {};
     }
 }
 
-function _saveGroupMap(settings, map) {
+function _saveJsonMap(settings, key, map) {
     try {
-        settings.set_string('monitor-groups', JSON.stringify(map));
+        settings.set_string(key, JSON.stringify(map));
     } catch (e) {
-        _warn('Failed to save monitor-groups', e);
+        _warn(`Failed to save ${key}`, e);
     }
 }
 
@@ -66,7 +79,7 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         super._init({
             title: _('Cast Display'),
             iconName: 'preferences-desktop-display-symbolic',
-            toggleMode: false,
+            toggleMode: true,
         });
 
         this._extension = extension;
@@ -74,47 +87,56 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         this._presentation = presentationMode;
         this._cast = castService;
         this._settings = extension.getSettings();
-        this._groupMap = _loadGroupMap(this._settings);
+        this._groupMap = _loadJsonMap(this._settings, 'monitor-groups');
+        this._deviceGroupMap = _loadJsonMap(this._settings, 'cast-device-groups');
         this._monitors = [];
         this._devices = [];
+        this._sessions = [];
+        this._selectedIds = new Set();
         this._castStatus = {state: 'idle', deviceId: '', deviceName: '', error: ''};
         this._presentationBeforeCast = null;
         this._castOwnedPresentation = false;
-        this._syncingPresentation = false;
         this._destroyed = false;
+        this._syncingChecked = false;
+        this._manageExpanded = false;
 
         this._disconnectMonitors = null;
         this._disconnectPresentation = null;
         this._disconnectCastAvail = null;
         this._disconnectCastDevices = null;
         this._disconnectCastSession = null;
+        this._disconnectSettings = null;
 
-        this._actionBox = null;
-        this._groupingBox = null;
-        this._monitorGrid = null;
-        this._presentationItem = null;
-        this._castSectionBox = null;
-        this._castListBox = null;
-        this._castStatusLabel = null;
+        this._rootBox = null;
+        this._statusLabel = null;
+        this._bodyBox = null;
 
         this.menu.setHeader(
             'preferences-desktop-display-symbolic',
             _('Cast Display'),
-            _('Layout, presentation, and cast')
+            _('Find and connect displays')
         );
 
-        this._buildActionGrid();
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        this._buildGroupingSection();
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        this._buildPresentationSwitch();
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        this._buildCastSection();
-
+        this._buildRoot();
         this.menu.addSettingsAction(
             _('Display settings'),
             'gnome-display-panel.desktop'
         );
+
+        let enabled = false;
+        try {
+            enabled = this._settings.get_boolean('cast-display-enabled');
+        } catch (_) { /* ignore */ }
+        this._syncingChecked = true;
+        this.checked = enabled;
+        this._syncingChecked = false;
+
+        this.connect('notify::checked', () => {
+            if (this._syncingChecked || this._destroyed)
+                return;
+            this._onActivationToggled(this.checked).catch(e =>
+                _warn('Activation toggle failed', e));
+        });
 
         this._disconnectMonitors = this._displayConfig.connectMonitorsChanged(() => {
             this._refreshMonitors().catch(e =>
@@ -122,15 +144,18 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         });
 
         this._disconnectPresentation = this._presentation.connectChanged(() => {
-            this._syncPresentationSwitch();
             this._updateSubtitle();
         });
 
         this._disconnectCastAvail = this._cast.connectAvailability(() => {
+            if (!this._isActivated())
+                return;
             this._refreshCastUi().catch(e =>
                 _warn('Cast availability refresh failed', e));
         });
         this._disconnectCastDevices = this._cast.connectDevicesChanged(() => {
+            if (!this._isActivated())
+                return;
             this._refreshDevices(false).catch(e =>
                 _warn('Cast devices refresh failed', e));
         });
@@ -138,9 +163,8 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
             this._onCastSession(status);
         });
 
-        // Windows Cast–like: scan when the menu opens
         this.menu.connect('open-state-changed', (_menu, isOpen) => {
-            if (!isOpen || this._destroyed)
+            if (!isOpen || this._destroyed || !this._isActivated())
                 return;
             this._onCastMenuOpened().catch(e =>
                 _warn('Cast menu open scan failed', e));
@@ -148,227 +172,134 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
 
         this._refreshMonitors().catch(e =>
             _warn('Initial monitor refresh failed', e));
-        this._syncPresentationSwitch();
-        this._refreshCastUi().catch(e =>
-            _warn('Initial cast refresh failed', e));
-    }
+        this._rebuildBody();
+        this._updateSubtitle();
 
-    async _onCastMenuOpened() {
-        this._updateCastStatusLabel(_('Searching for displays…'));
-        await this._cast.ensureStarted();
-        if (!this._cast.available) {
-            this._updateCastStatusLabel(
-                _('Cast helper not running. Run ./install.sh, then reopen.')
-            );
-            this._rebuildCastList();
-            return;
+        if (enabled) {
+            this._refreshCastUi().catch(e =>
+                _warn('Initial cast refresh failed', e));
         }
-        await this._refreshDevices(true);
-        this._applyCastStatusToUi();
     }
 
-    _buildActionGrid() {
-        const item = new PopupMenu.PopupBaseMenuItem({
-            reactive: false,
-            can_focus: false,
-        });
+    _isActivated() {
+        try {
+            return this._settings.get_boolean('cast-display-enabled');
+        } catch (_) {
+            return this.checked;
+        }
+    }
 
-        this._actionBox = new St.BoxLayout({
-            vertical: true,
-            style_class: 'dac-action-grid',
-            x_expand: true,
-        });
-
-        const heading = new St.Label({
-            text: _('Layout'),
-            style_class: 'dac-section-label',
-        });
-        this._actionBox.add_child(heading);
-
-        const actions = [
-            [
-                {label: _('Extend'), action: () => this._runLayout('extend')},
-                {label: _('Mirror all'), action: () => this._runLayout('mirror')},
-            ],
-            [
-                {label: _('Main only'), action: () => this._runLayout('main')},
-                {label: _('Secondary only'), action: () => this._runLayout('secondary')},
-            ],
-        ];
-
-        for (const row of actions) {
-            const rowBox = new St.BoxLayout({
-                style_class: 'dac-action-row',
-                x_expand: true,
-            });
-            for (const {label, action} of row) {
-                const button = new St.Button({
-                    style_class: 'button dac-action-button',
-                    label,
-                    x_expand: true,
-                    can_focus: true,
-                });
-                button.connect('clicked', () => {
-                    action().catch(e => _warn(`Action ${label} failed`, e));
-                });
-                rowBox.add_child(button);
-            }
-            this._actionBox.add_child(rowBox);
+    async _onActivationToggled(enabled) {
+        try {
+            this._settings.set_boolean('cast-display-enabled', enabled);
+        } catch (e) {
+            _warn('Failed to persist cast-display-enabled', e);
         }
 
-        item.add_child(this._actionBox);
-        this.menu.addMenuItem(item);
-    }
-
-    _buildGroupingSection() {
-        const item = new PopupMenu.PopupBaseMenuItem({
-            reactive: false,
-            can_focus: false,
-        });
-
-        this._groupingBox = new St.BoxLayout({
-            vertical: true,
-            style_class: 'dac-grouping-section',
-            x_expand: true,
-            visible: false,
-        });
-
-        const heading = new St.Label({
-            text: _('Custom grouping'),
-            style_class: 'dac-grouping-label',
-        });
-        this._groupingBox.add_child(heading);
-
-        const hint = new St.Label({
-            text: _('Tap a display to change its group'),
-            style_class: 'dim-label',
-        });
-        this._groupingBox.add_child(hint);
-
-        this._monitorGrid = new St.BoxLayout({
-            style_class: 'dac-monitor-grid',
-            x_expand: true,
-        });
-        this._groupingBox.add_child(this._monitorGrid);
-
-        const applyButton = new St.Button({
-            style_class: 'button dac-apply-button',
-            label: _('Apply'),
-            x_expand: true,
-            can_focus: true,
-        });
-        applyButton.connect('clicked', () => {
-            this._applyGroups().catch(e => _warn('Apply groups failed', e));
-        });
-        this._groupingBox.add_child(applyButton);
-
-        item.add_child(this._groupingBox);
-        this.menu.addMenuItem(item);
-    }
-
-    _buildPresentationSwitch() {
-        this._presentationItem = new PopupMenu.PopupSwitchMenuItem(
-            _('Presentation mode'),
-            this._presentation.enabled
-        );
-        this._presentationItem.connect('toggled', item => {
-            if (this._syncingPresentation || !this._presentation)
-                return;
-            const state = item.state;
-            // Manual toggle takes ownership away from cast auto-presentation.
-            this._castOwnedPresentation = false;
-            this._presentationBeforeCast = null;
-            this._presentation.setEnabled(state).then(ok => {
-                if (!ok) {
-                    this._syncPresentationSwitch();
-                    _notify(_('Cast Display'), _('Could not change presentation mode'));
+        if (!enabled) {
+            this._selectedIds.clear();
+            this._manageExpanded = false;
+            if (this._sessions.length ||
+                this._castStatus.state === 'casting' ||
+                this._castStatus.state === 'connecting') {
+                try {
+                    await this._cast.stop();
+                } catch (e) {
+                    _warn('Stop on deactivate failed', e);
                 }
-            }).catch(e => {
-                _warn('Presentation switch failed', e);
-                this._syncPresentationSwitch();
-            });
-        });
-        this.menu.addMenuItem(this._presentationItem);
-    }
-
-    _syncPresentationSwitch() {
-        if (!this._presentationItem || !this._presentation)
+                this._sessions = [];
+                this._castStatus = {state: 'idle', deviceId: '', deviceName: '', error: ''};
+                await this._restorePresentationAfterCast();
+            }
+            this._rebuildBody();
+            this._updateCheckedFromState();
+            this._updateSubtitle();
             return;
-        this._syncingPresentation = true;
-        this._presentationItem.setToggleState(this._presentation.enabled);
-        this._syncingPresentation = false;
+        }
+
+        await this._cast.ensureStarted();
+        this._rebuildBody();
+        await this._refreshCastUi();
+        this._updateCheckedFromState();
+        this._updateSubtitle();
     }
 
-    _buildCastSection() {
+    _updateCheckedFromState() {
+        const casting = this._castStatus.state === 'casting' ||
+            this._castStatus.state === 'connecting';
+        const on = this._isActivated() || casting;
+        this._syncingChecked = true;
+        this.checked = on;
+        this._syncingChecked = false;
+    }
+
+    _buildRoot() {
         const item = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
             can_focus: false,
         });
 
-        this._castSectionBox = new St.BoxLayout({
+        this._rootBox = new St.BoxLayout({
             vertical: true,
-            style_class: 'dac-cast-section',
+            style_class: 'dac-root',
             x_expand: true,
         });
 
-        const headerRow = new St.BoxLayout({
-            style_class: 'dac-cast-header',
-            x_expand: true,
-        });
-        const heading = new St.Label({
-            text: _('Cast to…'),
-            style_class: 'dac-section-label',
-            x_expand: true,
-        });
-        headerRow.add_child(heading);
-
-        const refreshBtn = new St.Button({
-            style_class: 'button dac-cast-refresh',
-            label: _('Refresh'),
-            can_focus: true,
-        });
-        refreshBtn.connect('clicked', () => {
-            this._refreshDevices(true).catch(e =>
-                _warn('Cast refresh failed', e));
-        });
-        headerRow.add_child(refreshBtn);
-        this._castSectionBox.add_child(headerRow);
-
-        this._castStatusLabel = new St.Label({
+        this._statusLabel = new St.Label({
             text: '',
             style_class: 'dim-label dac-cast-status',
         });
-        this._castStatusLabel.clutter_text.line_wrap = true;
-        this._castSectionBox.add_child(this._castStatusLabel);
+        this._statusLabel.clutter_text.line_wrap = true;
+        this._rootBox.add_child(this._statusLabel);
 
-        this._castListBox = new St.BoxLayout({
+        this._bodyBox = new St.BoxLayout({
             vertical: true,
-            style_class: 'dac-cast-list',
+            style_class: 'dac-body',
             x_expand: true,
         });
-        this._castSectionBox.add_child(this._castListBox);
+        this._rootBox.add_child(this._bodyBox);
 
-        item.add_child(this._castSectionBox);
+        item.add_child(this._rootBox);
         this.menu.addMenuItem(item);
     }
 
+    _setStatusText(text) {
+        if (this._statusLabel)
+            this._statusLabel.text = text || '';
+    }
+
+    async _onCastMenuOpened() {
+        this._setStatusText(_('Searching for displays…'));
+        await this._cast.ensureStarted();
+        if (!this._cast.available) {
+            this._setStatusText(
+                _('Cast helper not running. Run ./install.sh, then reopen.')
+            );
+            this._rebuildBody();
+            return;
+        }
+        await this._refreshDevices(true);
+        await this._refreshSessions();
+        this._applyCastStatusToUi();
+    }
+
     async _refreshCastUi() {
-        if (this._destroyed)
+        if (this._destroyed || !this._isActivated())
             return;
 
-        if (!this._cast.available) {
+        if (!this._cast.available)
             await this._cast.ensureStarted();
-        }
 
         if (!this._cast.available) {
             this._devices = [];
+            this._sessions = [];
             this._castStatus = {state: 'idle', deviceId: '', deviceName: '', error: ''};
-            this._rebuildCastList();
-            this._updateCastStatusLabel(
+            this._setStatusText(
                 _('Cast helper not running. Run ./install.sh, then reopen.')
             );
+            this._rebuildBody();
+            this._updateCheckedFromState();
             this._updateSubtitle();
-            this.checked = false;
             return;
         }
 
@@ -377,12 +308,46 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         } catch (e) {
             _warn('getStatus failed', e);
         }
+        await this._refreshSessions();
         await this._refreshDevices(false);
         this._applyCastStatusToUi();
     }
 
+    async _refreshSessions() {
+        if (!this._cast.available) {
+            this._sessions = [];
+            return;
+        }
+        try {
+            this._sessions = await this._cast.listSessions();
+        } catch (e) {
+            _warn('listSessions failed', e);
+            // Fall back to status-derived session for older helpers.
+            if (this._castStatus.state === 'casting' ||
+                this._castStatus.state === 'connecting') {
+                const ids = (this._castStatus.deviceId || '')
+                    .split(',')
+                    .map(s => s.trim())
+                    .filter(Boolean);
+                if (ids.length) {
+                    this._sessions = ids.map((id, i) => ({
+                        id,
+                        name: i === 0
+                            ? (this._castStatus.deviceName || id)
+                            : id,
+                        state: this._castStatus.state,
+                    }));
+                } else {
+                    this._sessions = [];
+                }
+            } else {
+                this._sessions = [];
+            }
+        }
+    }
+
     async _refreshDevices(forceRefresh = false) {
-        if (this._destroyed || !this._cast.available)
+        if (this._destroyed || !this._cast.available || !this._isActivated())
             return;
 
         try {
@@ -394,40 +359,83 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
             this._devices = [];
             _notify(_('Cast Display'), _('Could not list cast devices'));
         }
-        this._rebuildCastList();
+        this._pruneSelection();
+        this._rebuildBody();
         this._updateSubtitle();
     }
 
-    _rebuildCastList() {
-        if (!this._castListBox)
+    _pruneSelection() {
+        const known = new Set(this._devices.map(d => d.id));
+        for (const id of [...this._selectedIds]) {
+            if (!known.has(id))
+                this._selectedIds.delete(id);
+        }
+    }
+
+    _rebuildBody() {
+        if (!this._bodyBox)
             return;
 
-        this._castListBox.destroy_all_children();
+        this._bodyBox.destroy_all_children();
 
-        if (!this._cast.available)
-            return;
-
-        const casting = this._castStatus.state === 'casting' ||
-            this._castStatus.state === 'connecting';
-        const activeId = this._castStatus.deviceId;
-
-        if (casting && activeId) {
-            this._castListBox.add_child(this._createActiveCastRow());
+        if (!this._isActivated()) {
+            const empty = new St.Label({
+                text: _('Cast Display is off. Turn it on to find wireless displays.'),
+                style_class: 'dim-label dac-empty-hint',
+            });
+            empty.clutter_text.line_wrap = true;
+            this._bodyBox.add_child(empty);
             return;
         }
 
-        let lastId = '';
-        try {
-            lastId = this._settings.get_string('last-cast-device') || '';
-        } catch (_) { /* ignore */ }
+        const sessionCount = this._sessions.length;
+        const casting = this._castStatus.state === 'casting' ||
+            this._castStatus.state === 'connecting';
 
-        if (lastId) {
-            const last = this._devices.find(d => d.id === lastId);
-            if (last) {
-                this._castListBox.add_child(
-                    this._createDeviceRow(last, {reconnect: true})
-                );
-            }
+        if (casting && sessionCount > 0) {
+            if (sessionCount === 1)
+                this._buildNormalConnectedUi();
+            else
+                this._buildAdvancedConnectedUi();
+            this._buildAddDevicesSection();
+            return;
+        }
+
+        this._buildIdleDevicePicker();
+    }
+
+    _buildIdleDevicePicker() {
+        const header = new St.BoxLayout({
+            style_class: 'dac-cast-header',
+            x_expand: true,
+        });
+        const heading = new St.Label({
+            text: _('Devices'),
+            style_class: 'dac-section-label',
+            x_expand: true,
+        });
+        header.add_child(heading);
+
+        const refreshBtn = new St.Button({
+            style_class: 'button dac-cast-refresh',
+            label: _('Refresh'),
+            can_focus: true,
+        });
+        refreshBtn.connect('clicked', () => {
+            this._refreshDevices(true).catch(e =>
+                _warn('Cast refresh failed', e));
+        });
+        header.add_child(refreshBtn);
+        this._bodyBox.add_child(header);
+
+        if (!this._cast.available) {
+            const missing = new St.Label({
+                text: _('Cast helper not running. Run ./install.sh, then reopen.'),
+                style_class: 'dim-label',
+            });
+            missing.clutter_text.line_wrap = true;
+            this._bodyBox.add_child(missing);
+            return;
         }
 
         if (!this._devices.length) {
@@ -435,15 +443,123 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
                 text: _('No displays found. Check Wi‑Fi / Cast / Miracast.'),
                 style_class: 'dim-label',
             });
-            this._castListBox.add_child(empty);
+            empty.clutter_text.line_wrap = true;
+            this._bodyBox.add_child(empty);
+        } else {
+            const list = new St.BoxLayout({
+                vertical: true,
+                style_class: 'dac-cast-list',
+                x_expand: true,
+            });
+            for (const device of this._devices)
+                list.add_child(this._createSelectableDeviceRow(device));
+            this._bodyBox.add_child(list);
+        }
+
+        const count = this._selectedIds.size;
+        const hint = new St.Label({
+            text: count > 1
+                ? _('Multiple devices selected — advanced features after connect')
+                : _('Select one or more devices, then Connect'),
+            style_class: 'dim-label dac-select-hint',
+        });
+        hint.clutter_text.line_wrap = true;
+        this._bodyBox.add_child(hint);
+
+        const connectLabel = count > 1
+            ? _('Connect (%d)').format(count)
+            : _('Connect');
+        const connectBtn = new St.Button({
+            style_class: 'button dac-connect-button',
+            label: connectLabel,
+            x_expand: true,
+            can_focus: true,
+            reactive: count > 0,
+        });
+        if (count === 0)
+            connectBtn.add_style_class_name('dac-connect-disabled');
+        connectBtn.connect('clicked', () => {
+            this._connectSelected().catch(e =>
+                _warn('connectSelected failed', e));
+        });
+        this._bodyBox.add_child(connectBtn);
+    }
+
+    _createSelectableDeviceRow(device) {
+        const selected = this._selectedIds.has(device.id);
+        const row = new St.Button({
+            style_class: selected
+                ? 'dac-cast-device-row dac-cast-device-selected'
+                : 'dac-cast-device-row',
+            x_expand: true,
+            can_focus: true,
+            track_hover: true,
+        });
+
+        const inner = new St.BoxLayout({
+            style_class: 'dac-cast-device-inner',
+            x_expand: true,
+        });
+
+        const mark = new St.Label({
+            text: selected ? '✓' : '○',
+            style_class: 'dac-select-mark',
+        });
+        inner.add_child(mark);
+
+        const textBox = new St.BoxLayout({
+            vertical: true,
+            x_expand: true,
+        });
+        const name = new St.Label({
+            text: device.name || device.id,
+            style_class: 'dac-cast-device-name',
+        });
+        name.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+        textBox.add_child(name);
+
+        const metaParts = [this._protocolLabel(device.protocol)];
+        if (device.model)
+            metaParts.push(device.model);
+        const meta = new St.Label({
+            text: metaParts.join(' · '),
+            style_class: 'dim-label',
+        });
+        textBox.add_child(meta);
+        inner.add_child(textBox);
+        row.set_child(inner);
+
+        row.connect('clicked', () => {
+            this._toggleDeviceSelection(device);
+        });
+        return row;
+    }
+
+    _toggleDeviceSelection(device) {
+        const id = device.id;
+        if (this._selectedIds.has(id)) {
+            this._selectedIds.delete(id);
+            this._rebuildBody();
             return;
         }
 
-        for (const device of this._devices) {
-            if (lastId && device.id === lastId)
-                continue;
-            this._castListBox.add_child(this._createDeviceRow(device));
+        const isMiracast = device.protocol === 'miracast' ||
+            id.startsWith('miracast:');
+        if (isMiracast) {
+            this._selectedIds.clear();
+            this._selectedIds.add(id);
+            this._rebuildBody();
+            return;
         }
+
+        // Drop miracast if selecting chromecast.
+        for (const selectedId of [...this._selectedIds]) {
+            const d = this._devices.find(x => x.id === selectedId);
+            if (d?.protocol === 'miracast' || selectedId.startsWith('miracast:'))
+                this._selectedIds.delete(selectedId);
+        }
+        this._selectedIds.add(id);
+        this._rebuildBody();
     }
 
     _protocolLabel(protocol) {
@@ -452,7 +568,87 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         return _('Cast');
     }
 
-    _createDeviceRow(device, {reconnect = false} = {}) {
+    _buildModeChipGrid(onKind) {
+        const box = new St.BoxLayout({
+            vertical: true,
+            style_class: 'dac-mode-grid',
+            x_expand: true,
+        });
+
+        for (const row of LAYOUT_ACTIONS) {
+            const rowBox = new St.BoxLayout({
+                style_class: 'dac-action-row',
+                x_expand: true,
+            });
+            for (const {label, kind} of row) {
+                const button = new St.Button({
+                    style_class: 'button dac-mode-chip',
+                    label,
+                    x_expand: true,
+                    can_focus: true,
+                });
+                button.connect('clicked', () => {
+                    onKind(kind).catch(e =>
+                        _warn(`Layout ${kind} failed`, e));
+                });
+                rowBox.add_child(button);
+            }
+            box.add_child(rowBox);
+        }
+        return box;
+    }
+
+    _buildNormalConnectedUi() {
+        const session = this._sessions[0];
+        const heading = new St.Label({
+            text: _('Connected'),
+            style_class: 'dac-section-label',
+        });
+        this._bodyBox.add_child(heading);
+
+        this._bodyBox.add_child(this._createSessionRow(session, {showModes: false}));
+
+        const features = new St.Label({
+            text: _('Features'),
+            style_class: 'dac-section-label',
+        });
+        this._bodyBox.add_child(features);
+        this._bodyBox.add_child(this._buildModeChipGrid(kind => this._runLayout(kind)));
+    }
+
+    _buildAdvancedConnectedUi() {
+        const heading = new St.Label({
+            text: _('Connected (%d)').format(this._sessions.length),
+            style_class: 'dac-section-label',
+        });
+        this._bodyBox.add_child(heading);
+
+        for (const session of this._sessions)
+            this._bodyBox.add_child(this._createSessionRow(session, {showModes: true}));
+
+        const manageToggle = new St.Button({
+            style_class: 'button dac-manage-toggle',
+            label: this._manageExpanded ? _('Hide manage') : _('Manage'),
+            x_expand: true,
+            can_focus: true,
+        });
+        manageToggle.connect('clicked', () => {
+            this._manageExpanded = !this._manageExpanded;
+            this._rebuildBody();
+        });
+        this._bodyBox.add_child(manageToggle);
+
+        if (this._manageExpanded)
+            this._buildManageSection();
+    }
+
+    _createSessionRow(session, {showModes = false} = {}) {
+        const wrap = new St.BoxLayout({
+            vertical: true,
+            style_class: 'dac-session-block',
+            x_expand: true,
+        });
+
         const row = new St.BoxLayout({
             style_class: 'dac-cast-device-row',
             x_expand: true,
@@ -463,52 +659,20 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
             x_expand: true,
         });
         const name = new St.Label({
-            text: reconnect
-                ? _('Reconnect · %s').format(device.name || device.id)
-                : (device.name || device.id),
+            text: session.name || session.id,
             style_class: 'dac-cast-device-name',
         });
         name.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         textBox.add_child(name);
 
-        const metaParts = [];
-        metaParts.push(this._protocolLabel(device.protocol));
-        if (device.model)
-            metaParts.push(device.model);
-        const meta = new St.Label({
-            text: metaParts.join(' · '),
+        const stateLabel = new St.Label({
+            text: session.state === 'connecting'
+                ? _('Connecting…')
+                : _('Casting'),
             style_class: 'dim-label',
         });
-        textBox.add_child(meta);
+        textBox.add_child(stateLabel);
         row.add_child(textBox);
-
-        const connectBtn = new St.Button({
-            style_class: 'button dac-cast-action',
-            label: reconnect ? _('Reconnect') : _('Connect'),
-            can_focus: true,
-        });
-        connectBtn.connect('clicked', () => {
-            this._startCast(device).catch(e =>
-                _warn('startCast failed', e));
-        });
-        row.add_child(connectBtn);
-        return row;
-    }
-
-    _createActiveCastRow() {
-        const row = new St.BoxLayout({
-            style_class: 'dac-cast-device-row',
-            x_expand: true,
-        });
-        const label = new St.Label({
-            text: _('Connected to %s').format(
-                this._castStatus.deviceName || this._castStatus.deviceId
-            ),
-            style_class: 'dac-cast-device-name',
-            x_expand: true,
-        });
-        label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
-        row.add_child(label);
 
         const stopBtn = new St.Button({
             style_class: 'button dac-cast-action',
@@ -516,34 +680,335 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
             can_focus: true,
         });
         stopBtn.connect('clicked', () => {
-            this._stopCast().catch(e => _warn('stopCast failed', e));
+            this._disconnectSession(session.id).catch(e =>
+                _warn('disconnectSession failed', e));
         });
         row.add_child(stopBtn);
-        return row;
+        wrap.add_child(row);
+
+        if (showModes) {
+            const letter = this._deviceGroupMap[session.id] || 'A';
+            const groupHint = new St.Label({
+                text: _('Group %s').format(letter),
+                style_class: `dim-label dac-group-badge ${this._groupStyleClass(letter)}`,
+            });
+            wrap.add_child(groupHint);
+            wrap.add_child(this._buildModeChipGrid(kind => this._runLayout(kind)));
+        }
+
+        return wrap;
     }
 
-    _updateCastStatusLabel(text) {
-        if (this._castStatusLabel)
-            this._castStatusLabel.text = text || '';
+    _buildManageSection() {
+        const box = new St.BoxLayout({
+            vertical: true,
+            style_class: 'dac-manage-section',
+            x_expand: true,
+        });
+
+        const heading = new St.Label({
+            text: _('Manage'),
+            style_class: 'dac-section-label',
+        });
+        box.add_child(heading);
+
+        const mirrorAll = new St.Button({
+            style_class: 'button dac-connect-button',
+            label: _('Mirror all'),
+            x_expand: true,
+            can_focus: true,
+        });
+        mirrorAll.connect('clicked', () => {
+            this._mirrorAllConnected().catch(e =>
+                _warn('mirrorAll failed', e));
+        });
+        box.add_child(mirrorAll);
+
+        const groupHint = new St.Label({
+            text: _('Tap a device to change its group'),
+            style_class: 'dim-label',
+        });
+        box.add_child(groupHint);
+
+        const grid = new St.BoxLayout({
+            style_class: 'dac-monitor-grid',
+            x_expand: true,
+        });
+        const maxGroups = Math.max(2, this._sessions.length);
+        for (const session of this._sessions) {
+            const letter = this._deviceGroupMap[session.id] || 'A';
+            grid.add_child(this._createDeviceGroupTile(session, letter, maxGroups));
+        }
+        box.add_child(grid);
+
+        if (this._monitors.length >= 3) {
+            const localHeading = new St.Label({
+                text: _('Local displays'),
+                style_class: 'dac-section-label',
+            });
+            box.add_child(localHeading);
+            const localGrid = new St.BoxLayout({
+                style_class: 'dac-monitor-grid',
+                x_expand: true,
+            });
+            const localMax = this._monitors.length;
+            for (const monitor of this._monitors) {
+                const letter = this._groupMap[monitor.connector] || 'A';
+                localGrid.add_child(
+                    this._createMonitorTile(monitor, letter, localMax)
+                );
+            }
+            box.add_child(localGrid);
+
+            const applyLocal = new St.Button({
+                style_class: 'button dac-apply-button',
+                label: _('Apply local groups'),
+                x_expand: true,
+                can_focus: true,
+            });
+            applyLocal.connect('clicked', () => {
+                this._applyGroups().catch(e =>
+                    _warn('Apply groups failed', e));
+            });
+            box.add_child(applyLocal);
+        }
+
+        this._bodyBox.add_child(box);
+    }
+
+    _createDeviceGroupTile(session, letter, maxGroups) {
+        const box = new St.BoxLayout({
+            vertical: true,
+            style_class: `dac-monitor-tile ${this._groupStyleClass(letter)}`,
+            x_expand: true,
+        });
+
+        const name = new St.Label({
+            text: session.name || session.id,
+            style_class: 'dac-monitor-name',
+            x_align: Clutter.ActorAlign.CENTER,
+        });
+        name.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+        box.add_child(name);
+
+        const badge = new St.Label({
+            text: _('Group %s').format(letter),
+            style_class: 'dac-group-badge',
+            x_align: Clutter.ActorAlign.CENTER,
+        });
+        box.add_child(badge);
+
+        const button = new St.Button({
+            child: box,
+            x_expand: true,
+            can_focus: true,
+            track_hover: true,
+        });
+        button.connect('clicked', () => {
+            const current = this._deviceGroupMap[session.id] || 'A';
+            const nextIndex = (_letterIndex(current) + 1) % maxGroups;
+            this._deviceGroupMap[session.id] = DisplayConfig.groupLetter(nextIndex);
+            _saveJsonMap(this._settings, 'cast-device-groups', this._deviceGroupMap);
+            this._rebuildBody();
+        });
+        return button;
+    }
+
+    _buildAddDevicesSection() {
+        const connectedIds = new Set(this._sessions.map(s => s.id));
+        const available = this._devices.filter(d => !connectedIds.has(d.id));
+        if (!available.length)
+            return;
+
+        const heading = new St.Label({
+            text: _('Add device'),
+            style_class: 'dac-section-label',
+        });
+        this._bodyBox.add_child(heading);
+
+        const list = new St.BoxLayout({
+            vertical: true,
+            style_class: 'dac-cast-list',
+            x_expand: true,
+        });
+        for (const device of available) {
+            if (device.protocol === 'miracast')
+                continue;
+            const row = new St.BoxLayout({
+                style_class: 'dac-cast-device-row',
+                x_expand: true,
+            });
+            const name = new St.Label({
+                text: device.name || device.id,
+                style_class: 'dac-cast-device-name',
+                x_expand: true,
+            });
+            name.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+            row.add_child(name);
+
+            const addBtn = new St.Button({
+                style_class: 'button dac-cast-action',
+                label: _('Add'),
+                can_focus: true,
+            });
+            addBtn.connect('clicked', () => {
+                this._addDeviceToSession(device).catch(e =>
+                    _warn('addDevice failed', e));
+            });
+            row.add_child(addBtn);
+            list.add_child(row);
+        }
+        this._bodyBox.add_child(list);
+    }
+
+    async _connectSelected() {
+        const selected = this._devices.filter(d => this._selectedIds.has(d.id));
+        if (!selected.length) {
+            _notify(_('Cast Display'), _('Select a device first'));
+            return;
+        }
+        await this._startCastSelected(selected);
+    }
+
+    async _startCastSelected(devices) {
+        if (!this._cast.available) {
+            _notify(_('Cast Display'), _('Cast helper is not running'));
+            return;
+        }
+
+        const source = this._settings.get_string('cast-source') || 'primary';
+        try {
+            this._settings.set_string('last-cast-device', devices[0].id);
+        } catch (_) { /* ignore */ }
+
+        await this._maybeEnablePresentationForCast();
+
+        const names = devices.map(d => d.name || d.id);
+        this._castStatus = {
+            state: 'connecting',
+            deviceId: devices.map(d => d.id).join(','),
+            deviceName: names.length === 1
+                ? names[0]
+                : _('%s + %d').format(names[0], names.length - 1),
+            error: '',
+        };
+        this._sessions = devices.map(d => ({
+            id: d.id,
+            name: d.name || d.id,
+            state: 'connecting',
+        }));
+        this._applyCastStatusToUi();
+
+        try {
+            if (typeof this._cast.castDevices === 'function')
+                await this._cast.castDevices(devices.map(d => d.id), source);
+            else if (devices.length === 1)
+                await this._cast.castDesktop(devices[0].id, source);
+            else
+                throw new Error('Multi-device cast requires an updated cast helper');
+
+            try {
+                this._castStatus = await this._cast.getStatus();
+            } catch (_) { /* SessionChanged will update */ }
+            await this._refreshSessions();
+            this._selectedIds.clear();
+            this._applyCastStatusToUi();
+        } catch (e) {
+            _warn('CastDevices failed', e);
+            const msg = e?.message || String(e);
+            _notify(_('Cast Display'), msg);
+            this._castStatus = {
+                state: 'error',
+                deviceId: devices[0]?.id || '',
+                deviceName: devices[0]?.name || '',
+                error: msg,
+            };
+            this._sessions = [];
+            this._applyCastStatusToUi();
+            await this._restorePresentationAfterCast();
+        }
+    }
+
+    async _addDeviceToSession(device) {
+        const ids = [...this._sessions.map(s => s.id), device.id];
+        const known = ids.map(id => {
+            const existing = this._sessions.find(s => s.id === id);
+            if (existing)
+                return {id, name: existing.name};
+            return device;
+        });
+        await this._startCastSelected(known);
+    }
+
+    async _disconnectSession(deviceId) {
+        try {
+            if (this._sessions.length <= 1) {
+                await this._stopCast();
+                return;
+            }
+            if (typeof this._cast.disconnectDevice === 'function')
+                await this._cast.disconnectDevice(deviceId);
+            else
+                await this._stopCast();
+
+            await this._refreshSessions();
+            try {
+                this._castStatus = await this._cast.getStatus();
+            } catch (_) { /* ignore */ }
+
+            if (!this._sessions.length)
+                await this._restorePresentationAfterCast();
+
+            this._applyCastStatusToUi();
+        } catch (e) {
+            _warn('DisconnectDevice failed', e);
+            _notify(_('Cast Display'), _('Could not disconnect device'));
+        }
+    }
+
+    async _stopCast() {
+        try {
+            await this._cast.stop();
+            this._castStatus = {state: 'idle', deviceId: '', deviceName: '', error: ''};
+            this._sessions = [];
+            this._manageExpanded = false;
+            this._applyCastStatusToUi();
+            await this._restorePresentationAfterCast();
+        } catch (e) {
+            _warn('Stop cast failed', e);
+            _notify(_('Cast Display'), _('Could not stop casting'));
+        }
+    }
+
+    async _mirrorAllConnected() {
+        await this._runLayout('mirror');
+        if (this._sessions.length < 2)
+            return;
+        const source = 'all';
+        try {
+            this._settings.set_string('cast-source', source);
+        } catch (_) { /* ignore */ }
+        const devices = this._sessions.map(s => ({id: s.id, name: s.name}));
+        await this._startCastSelected(devices);
     }
 
     _applyCastStatusToUi() {
         const s = this._castStatus;
-        this.checked = s.state === 'casting' || s.state === 'connecting';
 
         if (s.state === 'error' && s.error) {
-            this._updateCastStatusLabel(s.error);
+            this._setStatusText(s.error);
         } else if (s.state === 'connecting') {
-            this._updateCastStatusLabel(
+            this._setStatusText(
                 _('Connecting to %s…').format(s.deviceName || s.deviceId)
             );
         } else if (s.state === 'casting') {
-            this._updateCastStatusLabel('');
-        } else if (this._cast.available) {
-            this._updateCastStatusLabel('');
+            this._setStatusText('');
+        } else if (this._isActivated() && this._cast.available) {
+            this._setStatusText('');
         }
 
-        this._rebuildCastList();
+        this._updateCheckedFromState();
+        this._rebuildBody();
         this._updateSubtitle();
     }
 
@@ -552,7 +1017,13 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
             return;
         const prev = this._castStatus.state;
         this._castStatus = status || this._castStatus;
-        this._applyCastStatusToUi();
+
+        this._refreshSessions().then(() => {
+            this._applyCastStatusToUi();
+        }).catch(e => {
+            _warn('session refresh failed', e);
+            this._applyCastStatusToUi();
+        });
 
         if (status?.state === 'error' && status.error) {
             _notify(_('Cast Display'), status.error);
@@ -560,62 +1031,9 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
                 _warn('restore presentation failed', e));
         } else if (status?.state === 'idle' &&
                    (prev === 'casting' || prev === 'connecting')) {
+            this._sessions = [];
             this._restorePresentationAfterCast().catch(e =>
                 _warn('restore presentation failed', e));
-        }
-    }
-
-    async _startCast(device) {
-        if (!this._cast.available) {
-            _notify(_('Cast Display'), _('Cast helper is not running'));
-            return;
-        }
-
-        const source = this._settings.get_string('cast-source') || 'primary';
-        try {
-            this._settings.set_string('last-cast-device', device.id);
-        } catch (_) { /* ignore */ }
-
-        await this._maybeEnablePresentationForCast();
-
-        this._castStatus = {
-            state: 'connecting',
-            deviceId: device.id,
-            deviceName: device.name,
-            error: '',
-        };
-        this._applyCastStatusToUi();
-
-        try {
-            await this._cast.castDesktop(device.id, source);
-            try {
-                this._castStatus = await this._cast.getStatus();
-            } catch (_) { /* SessionChanged will update */ }
-            this._applyCastStatusToUi();
-        } catch (e) {
-            _warn('CastDesktop failed', e);
-            const msg = e?.message || String(e);
-            _notify(_('Cast Display'), msg);
-            this._castStatus = {
-                state: 'error',
-                deviceId: device.id,
-                deviceName: device.name,
-                error: msg,
-            };
-            this._applyCastStatusToUi();
-            await this._restorePresentationAfterCast();
-        }
-    }
-
-    async _stopCast() {
-        try {
-            await this._cast.stop();
-            this._castStatus = {state: 'idle', deviceId: '', deviceName: '', error: ''};
-            this._applyCastStatusToUi();
-            await this._restorePresentationAfterCast();
-        } catch (e) {
-            _warn('Stop cast failed', e);
-            _notify(_('Cast Display'), _('Could not stop casting'));
         }
     }
 
@@ -632,7 +1050,6 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         if (!this._presentation.enabled) {
             const ok = await this._presentation.enable();
             this._castOwnedPresentation = !!ok;
-            this._syncPresentationSwitch();
         } else {
             this._castOwnedPresentation = false;
         }
@@ -645,10 +1062,8 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         this._castOwnedPresentation = false;
         const wasOff = this._presentationBeforeCast === false;
         this._presentationBeforeCast = null;
-        if (wasOff && this._presentation.enabled) {
+        if (wasOff && this._presentation.enabled)
             await this._presentation.disable();
-            this._syncPresentationSwitch();
-        }
     }
 
     async _refreshMonitors() {
@@ -662,7 +1077,8 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
 
             this._monitors = state.monitors || [];
             this._reconcileGroupMap();
-            this._rebuildMonitorTiles();
+            if (this._isActivated() && this._sessions.length >= 2 && this._manageExpanded)
+                this._rebuildBody();
             this._updateSubtitle();
         } catch (e) {
             _warn('getCurrentState in refresh failed', e);
@@ -670,7 +1086,7 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
     }
 
     _reconcileGroupMap() {
-        const saved = _loadGroupMap(this._settings);
+        const saved = _loadJsonMap(this._settings, 'monitor-groups');
         const next = {};
         const monitors = this._monitors;
 
@@ -686,27 +1102,6 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         this._groupMap = {...saved, ...next};
         for (const monitor of monitors)
             this._groupMap[monitor.connector] = next[monitor.connector];
-    }
-
-    _rebuildMonitorTiles() {
-        if (!this._monitorGrid || !this._groupingBox)
-            return;
-
-        this._monitorGrid.destroy_all_children();
-
-        const showGrouping = this._monitors.length >= 3;
-        this._groupingBox.visible = showGrouping;
-
-        if (!showGrouping)
-            return;
-
-        const maxGroups = this._monitors.length;
-
-        for (const monitor of this._monitors) {
-            const letter = this._groupMap[monitor.connector] || 'A';
-            const tile = this._createMonitorTile(monitor, letter, maxGroups);
-            this._monitorGrid.add_child(tile);
-        }
     }
 
     _createMonitorTile(monitor, letter, maxGroups) {
@@ -747,7 +1142,7 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
 
         button.connect('clicked', () => {
             this._cycleGroup(monitor.connector, maxGroups);
-            this._rebuildMonitorTiles();
+            this._rebuildBody();
         });
 
         return button;
@@ -766,8 +1161,16 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
 
     _updateSubtitle() {
         const s = this._castStatus;
+        if (!this._isActivated() && s.state !== 'casting' && s.state !== 'connecting') {
+            this.subtitle = _('Off');
+            return;
+        }
         if (s.state === 'casting') {
-            this.subtitle = _('Connected to %s').format(s.deviceName || s.deviceId);
+            if (this._sessions.length > 1) {
+                this.subtitle = _('Connected to %d devices').format(this._sessions.length);
+            } else {
+                this.subtitle = _('Connected to %s').format(s.deviceName || s.deviceId);
+            }
             return;
         }
         if (s.state === 'connecting') {
@@ -778,18 +1181,11 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
             this.subtitle = _('Cast error');
             return;
         }
-        if (this._presentation?.enabled) {
-            this.subtitle = _('Presentation');
+        if (this._devices.length > 0) {
+            this.subtitle = _('%d found').format(this._devices.length);
             return;
         }
-
-        const count = this._monitors.length;
-        if (count === 0)
-            this.subtitle = _('No displays');
-        else if (count === 1)
-            this.subtitle = _('1 display');
-        else
-            this.subtitle = _('%d displays').format(count);
+        this.subtitle = _('Ready');
     }
 
     async _runLayout(kind) {
@@ -826,8 +1222,11 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
             for (const monitor of this._monitors)
                 connected[monitor.connector] = this._groupMap[monitor.connector] || 'A';
 
-            const toSave = {..._loadGroupMap(this._settings), ...connected};
-            _saveGroupMap(this._settings, toSave);
+            const toSave = {
+                ..._loadJsonMap(this._settings, 'monitor-groups'),
+                ...connected,
+            };
+            _saveJsonMap(this._settings, 'monitor-groups', toSave);
             this._groupMap = toSave;
 
             const ok = await this._displayConfig.applyCustomGroups(connected);
@@ -858,12 +1257,14 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         disconnect(this._disconnectCastAvail);
         disconnect(this._disconnectCastDevices);
         disconnect(this._disconnectCastSession);
+        disconnect(this._disconnectSettings);
 
         this._disconnectMonitors = null;
         this._disconnectPresentation = null;
         this._disconnectCastAvail = null;
         this._disconnectCastDevices = null;
         this._disconnectCastSession = null;
+        this._disconnectSettings = null;
 
         this._displayConfig = null;
         this._presentation = null;

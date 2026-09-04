@@ -4,7 +4,7 @@ overview: Redesign the Cast Display Quick Settings tile so primary click turns c
 todos:
   - id: tile-activate
     content: Enable toggleMode + GSettings cast-display-enabled; gate menu/scan on activation
-    status: pending
+    status: completed
   - id: device-multiselect-ui
     content: "Rebuild menu: empty when off; selectable devices + Connect; branch UI by selection count"
     status: pending
@@ -13,7 +13,7 @@ todos:
     status: pending
   - id: helper-multi-cast
     content: Extend cast-helper + castService for CastDevices / ListSessions / DisconnectDevice
-    status: pending
+    status: in_progress
   - id: styles-readme
     content: Compact responsive CSS for new rows/chips; README + metadata UX notes
     status: pending

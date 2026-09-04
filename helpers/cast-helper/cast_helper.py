@@ -529,7 +529,7 @@ class ChromecastController:
     def __init__(self):
         self._casts: dict[str, Any] = {}
         self._lock = threading.Lock()
-        self._active = None
+        self._active: dict[str, Any] = {}
 
     def refresh(self, timeout: float = 5.0) -> None:
         import pychromecast
@@ -568,6 +568,13 @@ class ChromecastController:
                 for d in self._casts.values()
             ]
 
+    def device_name(self, device_id: str) -> str:
+        with self._lock:
+            info = self._casts.get(device_id)
+            if info:
+                return info.get("name") or device_id
+        return device_id
+
     def get_cast(self, device_id: str):
         import pychromecast
 
@@ -603,14 +610,15 @@ class ChromecastController:
             mc.block_until_active(timeout=20)
         except Exception as exc:
             LOG.warning("block_until_active: %s", exc)
-        self._active = cast
+        with self._lock:
+            self._active[device_id] = cast
         return cast
 
-    def stop(self) -> None:
-        cast = self._active
-        self._active = None
+    def stop_device(self, device_id: str) -> bool:
+        with self._lock:
+            cast = self._active.pop(device_id, None)
         if not cast:
-            return
+            return False
         try:
             cast.media_controller.stop()
         except Exception as exc:
@@ -619,6 +627,25 @@ class ChromecastController:
             cast.quit_app()
         except Exception as exc:
             LOG.debug("quit_app: %s", exc)
+        return True
+
+    def stop(self) -> None:
+        with self._lock:
+            casts = list(self._active.items())
+            self._active.clear()
+        for _device_id, cast in casts:
+            try:
+                cast.media_controller.stop()
+            except Exception as exc:
+                LOG.debug("media stop: %s", exc)
+            try:
+                cast.quit_app()
+            except Exception as exc:
+                LOG.debug("quit_app: %s", exc)
+
+    def active_ids(self) -> list[str]:
+        with self._lock:
+            return list(self._active.keys())
 
 
 class CastService(dbus.service.Object):
@@ -630,6 +657,8 @@ class CastService(dbus.service.Object):
         self._cc = ChromecastController()
         self._portal: Optional[PortalScreenCast] = None
         self._pipeline: Optional[StreamPipeline] = None
+        self._stream_url: str = ""
+        self._sessions: dict[str, dict[str, str]] = {}
         self._status = ("idle", "", "", "")
         self._op_lock = threading.Lock()
         self._gnd_proc: Optional[subprocess.Popen] = None
@@ -662,6 +691,24 @@ class CastService(dbus.service.Object):
             )
         return devices
 
+    def _status_label(self, device_ids: list[str], names: list[str]) -> tuple[str, str]:
+        if not device_ids:
+            return "", ""
+        if len(device_ids) == 1:
+            return device_ids[0], names[0] if names else device_ids[0]
+        primary_id = ",".join(device_ids)
+        primary_name = f"{names[0]} + {len(names) - 1}"
+        return primary_id, primary_name
+
+    def _refresh_status_from_sessions(self, state: str = "casting", error: str = "") -> None:
+        ids = list(self._sessions.keys())
+        if not ids:
+            self._set_status("idle", "", "", error)
+            return
+        names = [self._sessions[i].get("name", i) for i in ids]
+        device_id, device_name = self._status_label(ids, names)
+        self._set_status(state, device_id, device_name, error)
+
     def _set_status(
         self, state: str, device_id: str = "", device_name: str = "", error: str = ""
     ) -> None:
@@ -674,23 +721,7 @@ class CastService(dbus.service.Object):
 
         GLib.idle_add(emit)
 
-    @dbus.service.method(IFACE, in_signature="", out_signature="a(ssssb)")
-    def ListDevices(self):
-        return self._unified_devices()
-
-    @dbus.service.method(IFACE, in_signature="", out_signature="")
-    def Refresh(self):
-        self._cc.refresh()
-        self.DevicesChanged()
-
-    @dbus.service.method(IFACE, in_signature="", out_signature="b")
-    def HasMiracastSupport(self):
-        return bool(_gnd_available())
-
-    @dbus.service.method(IFACE, in_signature="ss", out_signature="")
-    def CastDesktop(self, device_id: str, source: str):
-        device_id = str(device_id)
-        source = str(source or "primary")
+    def _run_locked(self, work_fn: Callable[[], None]) -> None:
         if not self._op_lock.acquire(blocking=False):
             raise dbus.DBusException(
                 "org.cast.tools.Cast1.Busy",
@@ -702,10 +733,7 @@ class CastService(dbus.service.Object):
 
         def work():
             try:
-                if device_id.startswith("miracast:"):
-                    self._cast_miracast_impl(device_id)
-                else:
-                    self._cast_desktop_impl(device_id, source)
+                work_fn()
             except Exception as exc:
                 result["exc"] = exc
             finally:
@@ -727,63 +755,170 @@ class CastService(dbus.service.Object):
             str(exc) or "Cast failed",
         )
 
+    @dbus.service.method(IFACE, in_signature="", out_signature="a(ssssb)")
+    def ListDevices(self):
+        return self._unified_devices()
+
+    @dbus.service.method(IFACE, in_signature="", out_signature="")
+    def Refresh(self):
+        self._cc.refresh()
+        self.DevicesChanged()
+
+    @dbus.service.method(IFACE, in_signature="", out_signature="b")
+    def HasMiracastSupport(self):
+        return bool(_gnd_available())
+
+    @dbus.service.method(IFACE, in_signature="ss", out_signature="")
+    def CastDesktop(self, device_id: str, source: str):
+        device_id = str(device_id)
+        source = str(source or "primary")
+
+        def work():
+            if device_id.startswith("miracast:"):
+                self._cast_miracast_impl(device_id)
+            else:
+                self._cast_devices_impl([device_id], source)
+
+        self._run_locked(work)
+
+    @dbus.service.method(IFACE, in_signature="ass", out_signature="")
+    def CastDevices(self, device_ids, source):
+        ids = [str(d) for d in (device_ids or [])]
+        source = str(source or "primary")
+        if not ids:
+            raise dbus.DBusException(
+                "org.cast.tools.Cast1.Failed",
+                "No devices selected",
+            )
+
+        def work():
+            if any(i.startswith("miracast:") for i in ids):
+                if len(ids) != 1:
+                    raise dbus.DBusException(
+                        "org.cast.tools.Cast1.Failed",
+                        "Miracast cannot be combined with other devices",
+                    )
+                self._cast_miracast_impl(ids[0])
+            else:
+                self._cast_devices_impl(ids, source)
+
+        self._run_locked(work)
+
     def _cast_miracast_impl(self, device_id: str) -> None:
         name = "Wireless displays"
         try:
             self._teardown_stream(stop_cast=True)
+            self._sessions = {
+                device_id: {"name": name, "state": "connecting", "protocol": "miracast"}
+            }
             self._set_status("connecting", device_id, name, "")
             _launch_gnome_network_displays()
-            # GND owns the Miracast session UI; mark as casting bridge open.
+            self._sessions[device_id]["state"] = "casting"
             self._set_status("casting", device_id, name, "")
             GLib.idle_add(self.DevicesChanged)
         except Exception as exc:
             LOG.exception("Miracast open failed")
             err = str(exc)
+            self._sessions.clear()
             self._set_status("error", device_id, name, err)
             raise dbus.DBusException("org.cast.tools.Cast1.Failed", err)
 
-    def _cast_desktop_impl(self, device_id: str, source: str) -> None:
-        device_name = device_id
+    def _ensure_pipeline(self, source: str) -> str:
+        if self._pipeline and self._stream_url:
+            return self._stream_url
+
+        multiple = source == "all"
+        portal = PortalScreenCast(self._bus)
+        pw_fd, node_id = portal.start(multiple=multiple)
+        self._portal = portal
+
+        pipeline = StreamPipeline()
+        pipeline.start(pw_fd, node_id)
+        self._pipeline = pipeline
+        portal.release_fd()
+
+        lan = _lan_ip()
+        self._stream_url = pipeline.stream_url(lan)
+        return self._stream_url
+
+    def _cast_devices_impl(self, device_ids: list[str], source: str) -> None:
+        names = [self._cc.device_name(d) for d in device_ids]
+        primary_id, primary_name = self._status_label(device_ids, names)
         try:
+            # Replace previous sessions with the new set.
             self._teardown_stream(stop_cast=True)
-            devices = {d[0]: d for d in self._cc.list_entries()}
-            if device_id in devices:
-                device_name = devices[device_id][1]
-            self._set_status("connecting", device_id, device_name, "")
+            self._sessions = {
+                d: {
+                    "name": names[i],
+                    "state": "connecting",
+                    "protocol": "chromecast",
+                }
+                for i, d in enumerate(device_ids)
+            }
+            self._set_status("connecting", primary_id, primary_name, "")
 
-            multiple = source == "all"
-            portal = PortalScreenCast(self._bus)
-            pw_fd, node_id = portal.start(multiple=multiple)
-            self._portal = portal
+            url = self._ensure_pipeline(source)
+            for device_id, name in zip(device_ids, names):
+                LOG.info("Casting %s → %s (%s)", name, url, device_id)
+                self._cc.play_url(device_id, url, "video/mp2t")
+                self._sessions[device_id]["state"] = "casting"
 
-            pipeline = StreamPipeline()
-            pipeline.start(pw_fd, node_id)
-            self._pipeline = pipeline
-            portal.release_fd()
-
-            lan = _lan_ip()
-            url = pipeline.stream_url(lan)
-            LOG.info("Casting %s → %s (%s)", device_name, url, device_id)
-
-            self._cc.play_url(device_id, url, "video/mp2t")
-            self._set_status("casting", device_id, device_name, "")
+            self._refresh_status_from_sessions("casting")
             GLib.idle_add(self.DevicesChanged)
         except Exception as exc:
-            LOG.exception("CastDesktop failed")
+            LOG.exception("CastDevices failed")
             err = str(exc) or traceback.format_exc(limit=1)
             self._teardown_stream(stop_cast=True)
-            self._set_status("error", device_id, device_name, err)
+            self._sessions.clear()
+            self._set_status("error", primary_id, primary_name, err)
             raise dbus.DBusException("org.cast.tools.Cast1.Failed", err)
+
+    def _cast_desktop_impl(self, device_id: str, source: str) -> None:
+        self._cast_devices_impl([device_id], source)
+
+    @dbus.service.method(IFACE, in_signature="s", out_signature="")
+    def DisconnectDevice(self, device_id: str):
+        device_id = str(device_id)
+
+        def work():
+            if device_id not in self._sessions:
+                return
+            protocol = self._sessions[device_id].get("protocol", "chromecast")
+            if protocol == "miracast" or device_id.startswith("miracast:"):
+                self._teardown_stream(stop_cast=True)
+                self._sessions.clear()
+                self._set_status("idle", "", "", "")
+                return
+
+            self._cc.stop_device(device_id)
+            self._sessions.pop(device_id, None)
+            if not self._sessions:
+                self._teardown_stream(stop_cast=False)
+                self._stream_url = ""
+                self._set_status("idle", "", "", "")
+            else:
+                self._refresh_status_from_sessions("casting")
+            GLib.idle_add(self.DevicesChanged)
+
+        self._run_locked(work)
 
     @dbus.service.method(IFACE, in_signature="", out_signature="")
     def Stop(self):
         with self._op_lock:
             self._teardown_stream(stop_cast=True)
+            self._sessions.clear()
             self._set_status("idle", "", "", "")
 
     @dbus.service.method(IFACE, in_signature="", out_signature="(ssss)")
     def GetStatus(self):
         return self._status
+
+    @dbus.service.method(IFACE, in_signature="", out_signature="a(sss)")
+    def ListSessions(self):
+        return [
+            (device_id, info.get("name", device_id), info.get("state", "casting"))
+            for device_id, info in self._sessions.items()
+        ]
 
     @dbus.service.signal(IFACE, signature="")
     def DevicesChanged(self):
@@ -811,9 +946,11 @@ class CastService(dbus.service.Object):
             except Exception:
                 LOG.debug("portal stop failed", exc_info=True)
             self._portal = None
+        self._stream_url = ""
 
     def shutdown(self) -> None:
         self._teardown_stream(stop_cast=True)
+        self._sessions.clear()
 
 
 def main() -> int:
