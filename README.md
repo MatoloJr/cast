@@ -15,9 +15,9 @@ Display changes go through Mutter’s `org.gnome.Mutter.DisplayConfig` D-Bus API
 - GNOME Shell 45–50 (tested on GNOME Shell 50 / Ubuntu 26.04)
 - Wayland session
 
-## Install
+## Install (development symlink)
 
-From this repository root (the extension UUID directory layout):
+Prefer a symlink so edits in this repo load after a Shell restart. Do **not** run `gnome-extensions install` over a symlink — that can wipe the linked directory.
 
 ```bash
 # Compile the GSettings schema
@@ -27,14 +27,20 @@ glib-compile-schemas schemas/
 mkdir -p ~/.local/share/gnome-shell/extensions
 ln -sfn "$(pwd)" ~/.local/share/gnome-shell/extensions/display-and-cast@cast.tools
 
-# Enable
+# Enable (after the Shell has scanned the new extension — usually after logout/login)
 gnome-extensions enable display-and-cast@cast.tools
 ```
 
-Alternatively, pack and install:
+## Install (packaged zip)
 
 ```bash
-gnome-extensions pack --force
+gnome-extensions pack . --force \
+  --extra-source=lib \
+  --extra-source=ui \
+  --extra-source=README.md
+
+# Install into ~/.local/share/... (copies files; remove any symlink first)
+rm -f ~/.local/share/gnome-shell/extensions/display-and-cast@cast.tools
 gnome-extensions install --force display-and-cast@cast.tools.shell-extension.zip
 gnome-extensions enable display-and-cast@cast.tools
 ```
@@ -62,7 +68,10 @@ journalctl -f -o cat /usr/bin/gnome-shell | grep -i display-and-cast
 
 ```bash
 gnome-extensions disable display-and-cast@cast.tools
+# Symlink install:
 rm ~/.local/share/gnome-shell/extensions/display-and-cast@cast.tools
+# Zip install:
+rm -rf ~/.local/share/gnome-shell/extensions/display-and-cast@cast.tools
 ```
 
 ## Layout notes

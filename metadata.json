@@ -6,6 +6,6 @@
   "session-modes": ["user"],
   "settings-schema": "org.gnome.shell.extensions.display-and-cast",
   "gettext-domain": "display-and-cast",
-  "url": "https://github.com/cast-tools/display-and-cast",
+  "url": "https://github.com/MatoloJr/cast",
   "version": 1
 }

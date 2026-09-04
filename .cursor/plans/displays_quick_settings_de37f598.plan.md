@@ -7,19 +7,19 @@ todos:
     status: completed
   - id: display-config
     content: Implement lib/displayConfig.js (GetCurrentState, ApplyMonitorsConfig, layout builders, MonitorsChanged)
-    status: in_progress
+    status: completed
   - id: presentation
     content: Implement lib/presentationMode.js (SessionManager inhibit + show-banners save/restore)
-    status: pending
+    status: completed
   - id: ui
     content: Implement Displays QuickMenuToggle (2x2 + grouping) and Presentation QuickToggle + SystemIndicator
-    status: pending
+    status: completed
   - id: extension-wire
     content: Wire extension.js enable/disable, hotplug refresh, GSettings group persistence
-    status: pending
+    status: completed
   - id: install-verify
     content: Compile schemas, symlink install path, enable extension instructions in README
-    status: pending
+    status: completed
 isProject: false
 ---
 
