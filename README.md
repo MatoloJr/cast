@@ -29,37 +29,47 @@ make uninstall   # remove extension + helper
 
 ---
 
+
+
 ## What it does
 
-| Feature | Behavior |
-|--------|----------|
-| **Tile on/off** | Primary click activates discovery; off stops casting and hides devices |
-| **Connect (1 device)** | Normal features: Mirror / Extend / Main only / Secondary only |
-| **Connect (2+ devices)** | Advanced features: per-device modes + Manage (mirror all / group) |
-| **Mirror all** | Local displays mirrored; Chromecasts share the same stream |
-| **Custom groups** | Manage: group connected sinks; 3+ local monitors can be grouped too |
-| **Connect (Chromecast)** | Portal screen share → encode → LAN HTTP MPEG-TS → TV(s) |
-| **Connect (Miracast)** | Opens **gnome-network-displays** (single device; not multi-select) |
-| **Auto presentation** | While casting, optionally inhibits idle and hides banners (no menu toggle) |
+
+| Feature                  | Behavior                                                                   |
+| ------------------------ | -------------------------------------------------------------------------- |
+| **Tile on/off**          | Primary click activates discovery; off stops casting and hides devices     |
+| **Connect (1 device)**   | Normal features: Mirror / Extend / Main only / Secondary only              |
+| **Connect (2+ devices)** | Advanced features: per-device modes + Manage (mirror all / group)          |
+| **Mirror all**           | Local displays mirrored; Chromecasts share the same stream                 |
+| **Custom groups**        | Manage: group connected sinks; 3+ local monitors can be grouped too        |
+| **Connect (Chromecast)** | Portal screen share → encode → LAN HTTP MPEG-TS → TV(s)                    |
+| **Connect (Miracast)**   | Opens **gnome-network-displays** (single device; not multi-select)         |
+| **Auto presentation**    | While casting, optionally inhibits idle and hides banners (no menu toggle) |
+
 
 Display layouts use Mutter `org.gnome.Mutter.DisplayConfig` (not `xrandr`). Casting runs in a session helper over D-Bus so the Shell stays unload-safe.
 
 ---
 
+
+
 ## Compared to Windows Cast (Win+K)
 
-| Windows | Cast Display on Linux |
-|---------|------------------------|
-| Win+K opens Cast flyout | Turn on **Cast Display**, open the menu |
-| Auto-scans Miracast receivers | Auto-scans when on + menu open; continuous Chromecast discovery |
-| Click device to connect | Select device(s) → **Connect** / **Disconnect** |
-| Miracast (Wi‑Fi Direct) | Miracast via **gnome-network-displays** (soft dependency) |
-| Duplicate / Extend / Second screen | Layout features after connect (Mutter logical monitors) |
-| Smart TV Cast apps | Chromecast protocol (including multi-TV mirror) |
+
+| Windows                            | Cast Display on Linux                                           |
+| ---------------------------------- | --------------------------------------------------------------- |
+| Win+K opens Cast flyout            | Turn on **Cast Display**, open the menu                         |
+| Auto-scans Miracast receivers      | Auto-scans when on + menu open; continuous Chromecast discovery |
+| Click device to connect            | Select device(s) → **Connect** / **Disconnect**                 |
+| Miracast (Wi‑Fi Direct)            | Miracast via **gnome-network-displays** (soft dependency)       |
+| Duplicate / Extend / Second screen | Layout features after connect (Mutter logical monitors)         |
+| Smart TV Cast apps                 | Chromecast protocol (including multi-TV mirror)                 |
+
 
 **Note:** Windows Cast is primarily **Miracast**. Many TVs in East Africa also speak **Google Cast**. Cast Display covers both paths in one list (with a protocol badge: *Cast* vs *Wireless display*).
 
 ---
+
+
 
 ## Architecture
 
@@ -77,6 +87,8 @@ GNOME Shell Quick Settings
 
 ---
 
+
+
 ## Requirements
 
 - **GNOME Shell 45–50** (tested on Shell 50 / Ubuntu 26.04)
@@ -87,7 +99,11 @@ GNOME Shell Quick Settings
 
 ---
 
+
+
 ## Installation options
+
+
 
 ### A. Clone + `./install.sh` (best)
 
@@ -108,6 +124,8 @@ Or: `make install` / `make helper` / `make uninstall`.
 3. From the extracted tree (or a clone), run `./install.sh --helper-only`.
 4. Log out / in and enable the extension if needed.
 
+
+
 ### C. Pack from source
 
 ```bash
@@ -119,11 +137,13 @@ make pack
 
 ---
 
+
+
 ## Usage
 
 1. Open **Quick Settings** (top-right system menu).
 2. Click the **Cast Display** tile to turn it **on**.
-3. Open the menu with **`>`**.
+3. Open the menu with `>`.
 4. Select one or more devices (Miracast is exclusive), then **Connect** (or **Connect (N)**).
 5. Approve the **screen share** portal (Chromecast path).
 6. **One device:** use Mirror / Extend / Main only / Secondary only.
@@ -136,30 +156,38 @@ Presentation mode can auto-enable while casting (`cast-auto-presentation` GSetti
 
 ---
 
+
+
 ## Troubleshooting
 
-| Symptom | Fix |
-|---------|-----|
-| No Cast Display tile | Log out/in; `gnome-extensions enable display-and-cast@cast.tools` |
-| Menu empty / “is off” | Click the tile to turn Cast Display **on** |
+
+| Symptom                   | Fix                                                                     |
+| ------------------------- | ----------------------------------------------------------------------- |
+| No Cast Display tile      | Log out/in; `gnome-extensions enable display-and-cast@cast.tools`       |
+| Menu empty / “is off”     | Click the tile to turn Cast Display **on**                              |
 | “Cast helper not running” | `./install.sh --helper-only` then `systemctl --user status cast-helper` |
-| No Chromecast devices | Same Wi‑Fi (not guest); disable VPN; `Refresh` / reopen menu |
-| TV connects then black | Firewall: allow inbound TCP to the ephemeral stream port from the TV |
-| Portal cancelled | Approve Screen Share when prompted |
-| No Miracast row | `sudo apt install gnome-network-displays` |
-| Multi-connect fails | Restart helper after upgrade: `systemctl --user restart cast-helper` |
-| Audio missing | Phase 3 is **video only** (see roadmap) |
+| No Chromecast devices     | Same Wi‑Fi (not guest); disable VPN; `Refresh` / reopen menu            |
+| TV connects then black    | Firewall: allow inbound TCP to the ephemeral stream port from the TV    |
+| Portal cancelled          | Approve Screen Share when prompted                                      |
+| No Miracast row           | `sudo apt install gnome-network-displays`                               |
+| Multi-connect fails       | Restart helper after upgrade: `systemctl --user restart cast-helper`    |
+| Audio missing             | Phase 3 is **video only** (see roadmap)                                 |
+
+
+
 
 ### Logs
 
 ```bash
-journalctl -f -o cat /usr/bin/gnome-shell | grep -i display-and-cast
+jsournalctl -f -o cat /usr/bin/gnome-shell | grep -i display-and-cast
 journalctl --user -u cast-helper.service -f
 gdbus call --session -d org.cast.tools.Cast1 -o /org/cast/tools/Cast1 \
-  -m org.cast.tools.Cast1.ListDevices
+  -m org.cast.tools.Cast1.ListDevice
 ```
 
 ---
+
+
 
 ## Development
 
@@ -185,6 +213,8 @@ Helper D-Bus API (`org.cast.tools.Cast1`):
 
 ---
 
+
+
 ## Roadmap (enhance next)
 
 - **Audio** in the mirror pipeline (PipeWire audio → AAC/Opus)
@@ -199,6 +229,8 @@ Helper D-Bus API (`org.cast.tools.Cast1`):
 
 ---
 
+
+
 ## Uninstall
 
 ```bash
@@ -208,11 +240,15 @@ Helper D-Bus API (`org.cast.tools.Cast1`):
 
 ---
 
+
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
 
 ---
+
+
 
 ## Credits
 

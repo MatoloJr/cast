@@ -110,6 +110,9 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         this._rootBox = null;
         this._statusLabel = null;
         this._bodyBox = null;
+        this._deviceRowById = new Map();
+        this._selectHint = null;
+        this._connectBtn = null;
 
         this.menu.setHeader(
             'preferences-desktop-display-symbolic',

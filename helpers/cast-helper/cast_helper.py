@@ -139,7 +139,13 @@ class PortalScreenCast:
         *args: Any,
         options: Optional[dict] = None,
         timeout: float = 120.0,
+        timeout_message: str = "Portal request timed out",
     ) -> dict:
+        """Invoke a portal request and wait for Response on the GLib main loop.
+
+        Portal APIs + signal matching must run on the main thread; callers may
+        block from a worker while the D-Bus service pumps MainContext.
+        """
         options = dict(options or {})
         request_token = uuid.uuid4().hex
         options["handle_token"] = request_token
@@ -147,30 +153,57 @@ class PortalScreenCast:
             f"/org/freedesktop/portal/desktop/request/{self._sender}/{request_token}"
         )
         done = threading.Event()
-        result: dict[str, Any] = {"response": None, "results": None}
+        result: dict[str, Any] = {
+            "response": None,
+            "results": None,
+            "error": None,
+            "match": None,
+        }
 
         def on_response(response, results):
             result["response"] = int(response)
             result["results"] = results
             done.set()
 
-        match = self._bus.add_signal_receiver(
-            on_response,
-            signal_name="Response",
-            dbus_interface=REQUEST_IFACE,
-            path=request_path,
-        )
-        try:
-            method(*(args + (options,)), dbus_interface=SCREENCAST_IFACE)
-            if not done.wait(timeout):
-                raise TimeoutError(
-                    "Screen share dialog timed out — approve the portal prompt"
-                )
-        finally:
+        def invoke_on_main() -> bool:
             try:
-                match.remove()
-            except Exception:
-                pass
+                result["match"] = self._bus.add_signal_receiver(
+                    on_response,
+                    signal_name="Response",
+                    dbus_interface=REQUEST_IFACE,
+                    path=request_path,
+                )
+                method(*(args + (options,)), dbus_interface=SCREENCAST_IFACE)
+            except Exception as exc:
+                result["error"] = exc
+                done.set()
+            return False
+
+        # Always schedule on the GLib main thread so Response matching works.
+        GLib.idle_add(invoke_on_main)
+
+        if threading.current_thread() is threading.main_thread():
+            deadline = time.monotonic() + timeout
+            ctx = GLib.MainContext.default()
+            while not done.is_set():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                ctx.iteration(True)
+        else:
+            done.wait(timeout)
+
+        try:
+            if result["match"]:
+                result["match"].remove()
+        except Exception:
+            pass
+
+        if result["error"] is not None:
+            raise result["error"]
+
+        if not done.is_set() or result["response"] is None:
+            raise TimeoutError(timeout_message)
 
         if result["response"] != 0:
             raise RuntimeError(
@@ -185,6 +218,8 @@ class PortalScreenCast:
         results = self._call_with_response(
             self._portal.CreateSession,
             options={"session_handle_token": session_token},
+            timeout=30.0,
+            timeout_message="Portal session failed — CreateSession timed out",
         )
         self._session = str(results["session_handle"])
         self._call_with_response(
@@ -195,6 +230,8 @@ class PortalScreenCast:
                 "types": dbus.UInt32(1),
                 "cursor_mode": dbus.UInt32(2),
             },
+            timeout=30.0,
+            timeout_message="Portal session failed — SelectSources timed out",
         )
         start_results = self._call_with_response(
             self._portal.Start,
@@ -202,6 +239,9 @@ class PortalScreenCast:
             "",
             options={},
             timeout=180.0,
+            timeout_message=(
+                "Screen share dialog timed out — approve the portal prompt"
+            ),
         )
         streams = start_results.get("streams")
         if not streams:
