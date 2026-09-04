@@ -1,6 +1,6 @@
 ---
 name: Displays Quick Settings
-overview: Build a complete GNOME Shell 45–50 extension that adds a Quick Settings "Displays" menu (layout presets + optional 3+ monitor grouping) and a Presentation mode toggle, using Mutter DisplayConfig D-Bus and SessionManager inhibit — no xrandr, no casting UI.
+overview: Build a complete GNOME Shell 45–50 extension that adds a Quick Settings "Displays" menu (layout presets + optional 3+ monitor grouping) and a Presentation mode toggle, using Mutter DisplayConfig D-Bus and SessionManager inhibit no xrandr, no casting UI.
 todos:
   - id: scaffold
     content: Create metadata.json, schemas, stylesheet.css, README.md scaffolding
@@ -72,7 +72,7 @@ Wrap `Gio.DBusProxy` for `org.gnome.Mutter.DisplayConfig` at `/org/gnome/Mutter/
 
 - `getCurrentState()` → `{ serial, monitors, logicalMonitors, properties }` with helpers:
   - connector, `display-name`, `is-builtin`, current `mode_id`, mode width/height, scale from current logical assignment (fallback 1.0)
-- `applyLogicalMonitors(logicalMonitors, method=1)` — refresh serial, optional `method=0` verify then `method=1` temporary; pass through `layout-mode` if present
+- `applyLogicalMonitors(logicalMonitors, method=1)` refresh serial, optional `method=0` verify then `method=1` temporary; pass through `layout-mode` if present
 - Layout builders (apply monitor entry = `(connector, mode_id, {})`):
   - **Extend**: one logical monitor per physical, primary on builtin (else first), `x` stepped by logical width (`width / scale` when `layout-mode === 1`)
   - **Mirror all**: single logical monitor listing every connector (each keeps its current mode_id)
@@ -88,7 +88,7 @@ Wrap `Gio.DBusProxy` for `org.gnome.Mutter.DisplayConfig` at `/org/gnome/Mutter/
 
 - Inhibit via `org.gnome.SessionManager.Inhibit(app_id, 0, 'Presentation mode', 4|8)` → store cookie; `Uninhibit` on off/disable
 - DND: save then set `org.gnome.desktop.notifications` `show-banners` to `false`; restore saved value on off (do not force `true` if DND was already on)
-- Persist presentation enabled in extension GSettings so Shell restart can re-enable cleanly from `enable()`, and always tear down in `disable()` even if partially initialized
+- Persist presentation enabled in extension GSettings so Shell restart can re-enable cleanly from `enable()` and always tear down in `disable()` even if partially initialized
 
 ### UI ([`ui/displaysMenu.js`](ui/displaysMenu.js), [`ui/presentationToggle.js`](ui/presentationToggle.js))
 
@@ -130,11 +130,11 @@ On hotplug: refresh menu UI; for connectors present in `monitor-groups`, keep as
 
 ## Styling ([`stylesheet.css`](stylesheet.css))
 
-Compact action grid and monitor tiles only — reuse Quick Settings look; no custom card chrome. Group colors as subtle borders/badges. Avoid private CSS class names that broke in Shell 48 (`quick-menu-toggle` renames); style only our custom classes.
+Compact action grid and monitor tiles only reuse Quick Settings look; no custom card chrome. Group colors as subtle borders/badges. Avoid private CSS class names that broke in Shell 48 (`quick-menu-toggle` renames); style only our custom classes.
 
 ## README
 
-Install via symlink into `~/.local/share/gnome-shell/extensions/display-and-cast@cast.tools`, `glib-compile-schemas`, `gnome-extensions enable`, Wayland note (log out/in; `Alt+F2` `r` is X11-only), and `journalctl -f -o cat /usr/bin/gnome-shell` for logs.
+Install via symlink into `~/.local/share/gnome-shell/extensions/display-and-cast@cast.tools`, `glib-compile-schemas`, `gnome-extensions enable`, Wayland note (log out/in; `Alt+F2` `r` is X11-only) and `journalctl -f -o cat /usr/bin/gnome-shell` for logs.
 
 ## Defaults locked in
 

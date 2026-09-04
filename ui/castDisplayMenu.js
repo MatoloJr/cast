@@ -595,7 +595,7 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         const count = this._selectedIds.size;
         if (this._selectHint) {
             this._selectHint.text = count > 1
-                ? _('Multiple devices selected — advanced features after connect')
+                ? _('Multiple devices selected advanced features after connect')
                 : _('Select one or more devices, then Connect');
         }
         if (this._connectBtn) {

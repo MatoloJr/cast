@@ -2,9 +2,9 @@
 
 **Cast Display** is a GNOME Shell Quick Settings extension for Ubuntu / GNOME 45+ (Wayland) that combines:
 
-1. **Wireless casting** — Chromecast smart TVs **and** Miracast wireless displays
-2. **Multi-device connect** — select one or many Chromecasts and share one stream
-3. **Project layouts** — Mirror, Extend, Main only, Secondary only (after you connect)
+1. **Wireless casting** Chromecast smart TVs **and** Miracast wireless displays
+2. **Multi-device connect** select one or many Chromecasts and share one stream
+3. **Project layouts** Mirror, Extend, Main only, Secondary only (after you connect)
 
 One Quick Settings tile. One install command. Turn the tile **on**, open the menu, pick devices, **Connect**.
 
@@ -150,7 +150,7 @@ make pack
 7. **Multiple devices:** use per-device modes or **Manage** (Mirror all / group).
 8. **Disconnect** a device or turn the tile **off** when finished.
 
-**Miracast row** (“Wireless displays”) opens GNOME Network Displays — pick the receiver there (PIN / Wi‑Fi Direct as required by the TV).
+**Miracast row** (“Wireless displays”) opens GNOME Network Displays pick the receiver there (PIN / Wi‑Fi Direct as required by the TV).
 
 Presentation mode can auto-enable while casting (`cast-auto-presentation` GSettings key, default `true`). There is no presentation toggle in the menu.
 
@@ -206,7 +206,7 @@ cast/
 
 Helper D-Bus API (`org.cast.tools.Cast1`):
 
-- `ListDevices() → a(ssssb)` — id, name, model, protocol, online  
+- `ListDevices() → a(ssssb)` id, name, model, protocol, online  
 - `CastDesktop(id, source)`, `CastDevices(as ids, source)`, `DisconnectDevice(id)`  
 - `ListSessions() → a(sss)`, `Stop()`, `GetStatus()`, `Refresh()`, `HasMiracastSupport()`  
 - Signals: `DevicesChanged`, `SessionChanged`
@@ -244,7 +244,7 @@ Helper D-Bus API (`org.cast.tools.Cast1`):
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT see [LICENSE](LICENSE).
 
 ---
 
@@ -252,4 +252,4 @@ MIT — see [LICENSE](LICENSE).
 
 ## Credits
 
-Built on Mutter DisplayConfig, xdg-desktop-portal ScreenCast, pychromecast, GStreamer/ffmpeg, and optionally [GNOME Network Displays](https://gitlab.gnome.org/GNOME/gnome-network-displays) for Miracast.
+Built on Mutter DisplayConfig, xdg-desktop-portal ScreenCast, pychromecast, GStreamer/ffmpeg and optionally [GNOME Network Displays](https://gitlab.gnome.org/GNOME/gnome-network-displays) for Miracast.

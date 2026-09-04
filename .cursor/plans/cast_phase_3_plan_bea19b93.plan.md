@@ -1,6 +1,6 @@
 ---
 name: Cast Phase 3 Plan
-overview: Phase 3 cleans the repo, ships a one-command install + GitHub release (v3.0.0), hardens Chromecast into a Windows Cast–like scan/connect UX, and adds Miracast sinks via gnome-network-displays so wireless-display receivers appear alongside Chromecast.
+overview: Phase 3 cleans the repo, ships a one-command install + GitHub release (v3.0.0), hardens Chromecast into a Windows Cast–like scan/connect UX and adds Miracast sinks via gnome-network-displays so wireless-display receivers appear alongside Chromecast.
 todos:
   - id: p3-hygiene-bugs
     content: Cleanup unused/tracked junk; fix PipeWire fd ownership + HTTP serve; metadata v3
@@ -23,14 +23,14 @@ todos:
 isProject: false
 ---
 
-# Cast Display — Phase 3 plan
+# Cast Display Phase 3 plan
 
 ## Context from deep audit
 
 Phase 2 is implemented in-tree: one **Cast Display** QS tile, Mutter layouts, presentation mode, Chromecast helper (`org.cast.tools.Cast1`). Gaps that block a polished product:
 
 - Stale zip / no tags; `__pycache__` tracked; unused helper unit templates diverge from what [`install-helper.sh`](install-helper.sh) generates
-- Windows Cast (Win+K) is **Miracast** wireless display — not Chromecast; current stack only covers Cast TVs
+- Windows Cast (Win+K) is **Miracast** wireless display not Chromecast; current stack only covers Cast TVs
 - Cast UX is still “Refresh then Mirror”; `last-cast-device` is write-only; portal every time; no one-shot install
 - Bugs: GST→ffmpeg PipeWire **fd double-close** on fallback; ffmpeg `-listen 1` fragility
 
@@ -58,9 +58,9 @@ flowchart LR
 
 - Remove from git / ignore: `helpers/cast-helper/__pycache__/`, regenerate ignore rules (`__pycache__/`, `*.pyc`)
 - Delete stale on-disk `display-and-cast@cast.tools.shell-extension.zip` (gitignored) after rebuilding, or stop shipping it in repo
-- Align or remove unused templates: either make [`helpers/cast-helper/cast-helper.service`](helpers/cast-helper/cast-helper.service) the single source of truth that `install.sh` installs (substitute paths), or delete templates and keep generation only in install script — **use template + `envsubst`/`sed` from install** so one file is maintained
+- Align or remove unused templates: either make [`helpers/cast-helper/cast-helper.service`](helpers/cast-helper/cast-helper.service) the single source of truth that `install.sh` installs (substitute paths), or delete templates and keep generation only in install script **use template + `envsubst`/`sed` from install** so one file is maintained
 - Fix stylesheet Phase 1 comment; bump [`metadata.json`](metadata.json) `version` to **3** and description to mention wireless display + Chromecast
-- Fix [`cast_helper.py`](helpers/cast-helper/cast_helper.py) `StreamPipeline.start()`: on GST failure, **do not** `stop()` in a way that closes the portal FD before ffmpeg reuse — transfer ownership cleanly
+- Fix [`cast_helper.py`](helpers/cast-helper/cast_helper.py) `StreamPipeline.start()`: on GST failure, **do not** `stop()` in a way that closes the portal FD before ffmpeg reuse transfer ownership cleanly
 - Prefer multi-client HTTP serve for ffmpeg path (replace `-listen 1` with a small threaded HTTP server feeding MPEG-TS, or `hlssink`/`mpegts` over a persistent `aiohttp`/`http.server` wrapper) so Chromecast probe reconnects do not kill the stream
 
 ## 3. Windows-like Cast UX + Miracast
@@ -72,8 +72,8 @@ In [`ui/castDisplayMenu.js`](ui/castDisplayMenu.js) + [`lib/castService.js`](lib
 - On menu **open**: auto-start helper + `Refresh` (show “Searching for displays…” while scanning)
 - Rename primary action **Mirror → Connect**; show **Disconnect** when active
 - Use `last-cast-device`: highlight last device; optional “Reconnect” row at top when idle
-- Continuous discovery in helper (periodic mDNS / CastBrowser) emitting `DevicesChanged` — UI Refresh becomes secondary
-- Clear empty states: no helper / no devices / casting error (toasts already exist — keep)
+- Continuous discovery in helper (periodic mDNS / CastBrowser) emitting `DevicesChanged` UI Refresh becomes secondary
+- Clear empty states: no helper / no devices / casting error (toasts already exist keep)
 
 ### Miracast (true Windows protocol)
 
@@ -145,7 +145,7 @@ Replace Phase-2-centric docs with a full product README:
 - Uninstall
 - Development / packing / releasing
 - Roadmap (Phase 4+)
-- License (add if missing; default MIT if repo has none — check and set)
+- License (add if missing; default MIT if repo has none check and set)
 
 ## Implementation order
 

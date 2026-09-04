@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cast Display session helper — Chromecast + Miracast (GND) bridge."""
+"""Cast Display session helper Chromecast + Miracast (GND) bridge."""
 
 from __future__ import annotations
 
@@ -219,7 +219,7 @@ class PortalScreenCast:
             self._portal.CreateSession,
             options={"session_handle_token": session_token},
             timeout=30.0,
-            timeout_message="Portal session failed — CreateSession timed out",
+            timeout_message="Portal session failed CreateSession timed out",
         )
         self._session = str(results["session_handle"])
         self._call_with_response(
@@ -231,7 +231,7 @@ class PortalScreenCast:
                 "cursor_mode": dbus.UInt32(2),
             },
             timeout=30.0,
-            timeout_message="Portal session failed — SelectSources timed out",
+            timeout_message="Portal session failed SelectSources timed out",
         )
         start_results = self._call_with_response(
             self._portal.Start,
@@ -240,7 +240,7 @@ class PortalScreenCast:
             options={},
             timeout=180.0,
             timeout_message=(
-                "Screen share dialog timed out — approve the portal prompt"
+                "Screen share dialog timed out approve the portal prompt"
             ),
         )
         streams = start_results.get("streams")
@@ -376,7 +376,7 @@ class StreamPipeline:
                 return self._port
             except Exception:
                 LOG.exception("GStreamer pipeline failed; trying ffmpeg fallback")
-                # Do NOT close portal FD — only tear down GST objects.
+                # Do NOT close portal FD only tear down GST objects.
                 self._abort_gst_only()
                 self._port = _pick_free_port()
         self._start_ffmpeg(pw_fd, node_id)

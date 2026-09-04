@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cast Display — one-command install (extension + cast helper).
+# Cast Display one-command install (extension + cast helper).
 # Usage:
 #   ./install.sh              # full install
 #   ./install.sh --helper-only

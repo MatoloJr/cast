@@ -1,6 +1,6 @@
 ---
 name: Cast Display UX
-overview: Redesign the Cast Display Quick Settings tile so primary click turns casting on/off, the menu chevron shows a gated device picker with multi-select, and Connect branches into single-device (normal) vs multi-device (advanced) feature UIs—removing the presentation toggle while extending the helper to mirror one stream to multiple Chromecasts.
+overview: Redesign the Cast Display Quick Settings tile so primary click turns casting on/off, the menu chevron shows a gated device picker with multi-select and Connect branches into single-device (normal) vs multi-device (advanced) feature UIs—removing the presentation toggle while extending the helper to mirror one stream to multiple Chromecasts.
 todos:
   - id: tile-activate
     content: Enable toggleMode + GSettings cast-display-enabled; gate menu/scan on activation
@@ -27,7 +27,7 @@ isProject: false
 
 ## Current vs target
 
-Today [`ui/castDisplayMenu.js`](ui/castDisplayMenu.js) uses `toggleMode: false` (click opens menu), always shows Layout + Presentation + Cast list, and the helper only casts to **one** Chromecast at a time.
+Today [`ui/castDisplayMenu.js`](ui/castDisplayMenu.js) uses `toggleMode: false` (click opens menu), always shows Layout + Presentation + Cast list and the helper only casts to **one** Chromecast at a time.
 
 ```mermaid
 flowchart TD
@@ -95,7 +95,7 @@ Connect runs `_startCastSelected(selectedDevices)`. After a successful connect (
 
 ### Advanced features (2+ connected devices)
 
-- One row per connected device: name, status, **Disconnect**, and per-device mode chips (or a compact mode control).
+- One row per connected device: name, status, **Disconnect** and per-device mode chips (or a compact mode control).
 - **Manage** block:
   - **Mirror all** → `applyMirrorAll()` + ensure all connected Chromecasts share the stream.
   - **Group** → assign group letters per connected device (`cast-device-groups`); apply feature per device within the group UI; reuse local monitor grouping when ≥3 monitors where it still applies.

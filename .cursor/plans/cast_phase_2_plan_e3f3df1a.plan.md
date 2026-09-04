@@ -26,7 +26,7 @@ todos:
 isProject: false
 ---
 
-# Cast Display — Phase 2 plan (updated)
+# Cast Display Phase 2 plan (updated)
 
 ## Naming
 
@@ -43,8 +43,8 @@ Alternatives considered and rejected: “Cast” (too vague vs Wi‑Fi Cast), �
 
 There is already **one** GNOME Shell extension (`display-and-cast@cast.tools`). Phase 1 registered **two Quick Settings tiles** from that one extension:
 
-1. **Displays** — layout presets + grouping ([`ui/displaysMenu.js`](ui/displaysMenu.js))
-2. **Presentation mode** — separate toggle ([`ui/presentationToggle.js`](ui/presentationToggle.js))
+1. **Displays** layout presets + grouping ([`ui/displaysMenu.js`](ui/displaysMenu.js))
+2. **Presentation mode** separate toggle ([`ui/presentationToggle.js`](ui/presentationToggle.js))
 
 Phase 2 keeps **one extension** and collapses those into **one Quick Settings entry**: **Cast Display**.
 
@@ -112,15 +112,15 @@ flowchart TD
 
 ## Protocol order (unchanged)
 
-1. **Chromecast first** — Phase 2
-2. **DLNA** — Phase 3 (reuse HTTP URL)
-3. **Miracast last** — Phase 4 (wrap gnome-network-displays)
+1. **Chromecast first** Phase 2
+2. **DLNA** Phase 3 (reuse HTTP URL)
+3. **Miracast last** Phase 4 (wrap gnome-network-displays)
 
 ## Architecture for casting that actually works
 
 GJS cannot own Cast TLS or a durable encode pipeline. Casting stays in a **session helper**; the extension stays UI + D-Bus client.
 
-### A. `helpers/cast-helper/` (new) — must be production-shaped, not a stub
+### A. `helpers/cast-helper/` (new) must be production-shaped, not a stub
 
 Python 3 user service on the session bus: `org.cast.tools.Cast1` / `/org/cast/tools/Cast1`.
 
@@ -138,7 +138,7 @@ Python 3 user service on the session bus: `org.cast.tools.Cast1` / `/org/cast/to
 1. Resolve Chromecast via `pychromecast` (connect, wait for ready, media controller).
 2. Capture with GStreamer PipeWire (`pipewiresrc` / portal-aware path on Wayland). Prefer the **primary logical monitor** for v1.
 3. Encode H.264 (`vah264enc` if VA-API present, else `x264enc tune=zerolatency`).
-4. Serve a Chromecast-playable container (fragmented MP4 or MPEG-TS) on `127.0.0.1:<ephemeral>` **and** bind on the LAN IP the Cast device can reach (not localhost-only — Cast devices cannot fetch `127.0.0.1` on the PC).
+4. Serve a Chromecast-playable container (fragmented MP4 or MPEG-TS) on `127.0.0.1:<ephemeral>` **and** bind on the LAN IP the Cast device can reach (not localhost-only Cast devices cannot fetch `127.0.0.1` on the PC).
 5. `play_media(http://<lan-ip>:<port>/stream.mp4, content_type=...)`.
 6. On `Stop` or helper exit: stop media on device, kill pipeline, close HTTP server, emit `SessionChanged`.
 
@@ -146,13 +146,13 @@ Python 3 user service on the session bus: `org.cast.tools.Cast1` / `/org/cast/to
 
 - Helper installs as a **systemd --user** unit (`cast-helper.service`) with `Restart=on-failure`
 - Extension calls `StartServiceByName` / documents `systemctl --user enable --now cast-helper.service`
-- If helper missing: menu shows actionable empty state (“Install / start Cast helper”) — no Shell crash
+- If helper missing: menu shows actionable empty state (“Install / start Cast helper”) no Shell crash
 - Firewall note in README (Cast + HTTP port); bind only when casting
 - Audio out of scope for v1 video-only mirror (document clearly)
 - Failures surface as QS subtitle or Shell notification toast (not journal-only)
 - Idempotent `Stop()`; no orphan ffmpeg/gst processes after disable/logout
 
-Ship: `helpers/cast-helper/` + `install-helper.sh` + `requirements.txt` (`pychromecast`, and system packages for GStreamer plugins).
+Ship: `helpers/cast-helper/` + `install-helper.sh` + `requirements.txt` (`pychromecast` and system packages for GStreamer plugins).
 
 ### B. `lib/castService.js` (new)
 
@@ -182,9 +182,9 @@ Keep Mutter layout builders as-is. Do **not** invent a virtual DRM monitor for C
 - Helper install path + e2e verification checklist
 - User-visible errors
 
-**Phase 3 — DLNA** (same helper, same menu section)
+**Phase 3 DLNA** (same helper, same menu section)
 
-**Phase 4 — Miracast** (external gnome-network-displays)
+**Phase 4 Miracast** (external gnome-network-displays)
 
 **Non-goals for Phase 2**
 
@@ -197,10 +197,10 @@ Keep Mutter layout builders as-is. Do **not** invent a virtual DRM monitor for C
 
 ## Implementation order
 
-1. **Consolidate UI + rename** — one Cast Display menu; presentation switch inside; drop second tile; update metadata name/description/README.
-2. **Helper scaffold** — D-Bus + ListDevices/Refresh; verify with `gdbus`.
-3. **Wire discovery into menu** — Cast to… list; missing-helper state.
-4. **Desktop mirror pipeline** — LAN-reachable HTTP + play_media; Stop teardown; status signals.
+1. **Consolidate UI + rename** one Cast Display menu; presentation switch inside; drop second tile; update metadata name/description/README.
+2. **Helper scaffold** D-Bus + ListDevices/Refresh; verify with `gdbus`.
+3. **Wire discovery into menu** Cast to… list; missing-helper state.
+4. **Desktop mirror pipeline** LAN-reachable HTTP + play_media; Stop teardown; status signals.
 5. **Auto-presentation + toasts + schema**.
 6. **Install script + README + e2e checklist** (two displays layout, presentation switch, cast discover/mirror/stop).
 

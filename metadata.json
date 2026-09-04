@@ -1,7 +1,7 @@
 {
   "uuid": "display-and-cast@cast.tools",
   "name": "Cast Display",
-  "description": "Quick Settings to find Chromecast and Miracast displays, connect to one or many devices, and apply project layouts (mirror, extend, main only, secondary only).",
+  "description": "Quick Settings to find Chromecast and Miracast displays, connect to one or many devices and apply project layouts (mirror, extend, main only, secondary only).",
   "shell-version": ["45", "46", "47", "48", "49", "50"],
   "session-modes": ["user"],
   "settings-schema": "org.gnome.shell.extensions.display-and-cast",
