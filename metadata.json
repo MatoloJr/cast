@@ -1,0 +1,11 @@
+{
+  "uuid": "display-and-cast@cast.tools",
+  "name": "Display & Cast",
+  "description": "Manage multi-monitor layouts and presentation mode from Quick Settings.",
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
+  "session-modes": ["user"],
+  "settings-schema": "org.gnome.shell.extensions.display-and-cast",
+  "gettext-domain": "display-and-cast",
+  "url": "https://github.com/cast-tools/display-and-cast",
+  "version": 1
+}

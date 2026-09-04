@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.display-and-cast"
+          path="/org/gnome/shell/extensions/display-and-cast/">
+    <key name="monitor-groups" type="s">
+      <default>"{}"</default>
+      <summary>Monitor group assignments</summary>
+      <description>
+        JSON map of connector name to group letter (A, B, C, …)
+        used for custom multi-monitor layouts.
+      </description>
+    </key>
+    <key name="presentation-mode" type="b">
+      <default>false</default>
+      <summary>Presentation mode enabled</summary>
+      <description>
+        Whether presentation mode (idle inhibit + Do Not Disturb)
+        was last enabled. Restored after a Shell restart.
+      </description>
+    </key>
+  </schema>
+</schemalist>

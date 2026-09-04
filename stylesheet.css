@@ -1,0 +1,107 @@
+/* Action button grid inside the Displays Quick Settings menu */
+.dac-action-grid {
+  spacing: 6px;
+  padding: 4px 0 8px 0;
+}
+
+.dac-action-row {
+  spacing: 6px;
+}
+
+.dac-action-button {
+  min-height: 32px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 500;
+}
+
+.dac-grouping-section {
+  spacing: 6px;
+  padding: 4px 0 0 0;
+}
+
+.dac-grouping-label {
+  font-weight: 500;
+  padding: 2px 0 4px 0;
+}
+
+.dac-monitor-grid {
+  spacing: 6px;
+}
+
+.dac-monitor-tile {
+  min-width: 72px;
+  min-height: 48px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border-width: 2px;
+  border-color: transparent;
+  font-size: 0.85em;
+}
+
+.dac-monitor-tile .dac-monitor-name {
+  font-weight: 500;
+}
+
+.dac-monitor-tile .dac-group-badge {
+  font-size: 0.8em;
+  font-weight: 600;
+  padding-top: 2px;
+}
+
+/* Group color accents */
+.dac-group-a {
+  border-color: #3584e4;
+}
+
+.dac-group-a .dac-group-badge {
+  color: #3584e4;
+}
+
+.dac-group-b {
+  border-color: #26a269;
+}
+
+.dac-group-b .dac-group-badge {
+  color: #26a269;
+}
+
+.dac-group-c {
+  border-color: #e5a50a;
+}
+
+.dac-group-c .dac-group-badge {
+  color: #e5a50a;
+}
+
+.dac-group-d {
+  border-color: #c64600;
+}
+
+.dac-group-d .dac-group-badge {
+  color: #c64600;
+}
+
+.dac-group-e {
+  border-color: #9141ac;
+}
+
+.dac-group-e .dac-group-badge {
+  color: #9141ac;
+}
+
+.dac-group-f {
+  border-color: #1a5fb4;
+}
+
+.dac-group-f .dac-group-badge {
+  color: #1a5fb4;
+}
+
+.dac-apply-button {
+  min-height: 32px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-weight: 500;
+  margin-top: 4px;
+}
