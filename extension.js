@@ -6,8 +6,8 @@ import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js'
 
 import {DisplayConfig} from './lib/displayConfig.js';
 import {PresentationMode} from './lib/presentationMode.js';
-import {DisplaysMenuToggle} from './ui/displaysMenu.js';
-import {PresentationToggle} from './ui/presentationToggle.js';
+import {CastService} from './lib/castService.js';
+import {CastDisplayMenuToggle} from './ui/castDisplayMenu.js';
 
 function _warn(message, error) {
     if (error)
@@ -16,20 +16,22 @@ function _warn(message, error) {
         console.warn(`[display-and-cast] ${message}`);
 }
 
-const DisplaysIndicator = GObject.registerClass(
-class DisplaysIndicator extends QuickSettings.SystemIndicator {
-    _init(extension, displayConfig, presentationMode) {
+const CastDisplayIndicator = GObject.registerClass(
+class CastDisplayIndicator extends QuickSettings.SystemIndicator {
+    _init(extension, displayConfig, presentationMode, castService) {
         super._init();
 
-        // No persistent top-bar icon; Quick Settings tiles only.
+        // No persistent top-bar icon; Quick Settings tile only.
         const icon = this._addIndicator();
         icon.visible = false;
 
-        this._displaysToggle = new DisplaysMenuToggle(extension, displayConfig);
-        this._presentationToggle = new PresentationToggle(presentationMode);
-
-        this.quickSettingsItems.push(this._displaysToggle);
-        this.quickSettingsItems.push(this._presentationToggle);
+        this._menuToggle = new CastDisplayMenuToggle(
+            extension,
+            displayConfig,
+            presentationMode,
+            castService
+        );
+        this.quickSettingsItems.push(this._menuToggle);
     }
 
     destroy() {
@@ -49,6 +51,7 @@ export default class DisplayAndCastExtension extends Extension {
     enable() {
         this._displayConfig = null;
         this._presentation = null;
+        this._castService = null;
         this._indicator = null;
 
         try {
@@ -64,13 +67,20 @@ export default class DisplayAndCastExtension extends Extension {
         }
 
         try {
-            if (!this._displayConfig || !this._presentation) {
+            this._castService = new CastService();
+        } catch (e) {
+            _warn('Failed to init CastService', e);
+        }
+
+        try {
+            if (!this._displayConfig || !this._presentation || !this._castService) {
                 _warn('Skipping Quick Settings indicator; backend init incomplete');
             } else {
-                this._indicator = new DisplaysIndicator(
+                this._indicator = new CastDisplayIndicator(
                     this,
                     this._displayConfig,
-                    this._presentation
+                    this._presentation,
+                    this._castService
                 );
                 Main.panel.statusArea.quickSettings.addExternalIndicator(
                     this._indicator
@@ -88,6 +98,29 @@ export default class DisplayAndCastExtension extends Extension {
 
     disable() {
         try {
+            if (this._castService?.available)
+                this._castService.stop().catch(() => {});
+        } catch (e) {
+            _warn('Stop cast on disable failed', e);
+        }
+
+        try {
+            if (this._indicator)
+                this._indicator.destroy();
+        } catch (e) {
+            _warn('Indicator destroy failed', e);
+        }
+        this._indicator = null;
+
+        try {
+            if (this._castService)
+                this._castService.destroy();
+        } catch (e) {
+            _warn('CastService destroy failed', e);
+        }
+        this._castService = null;
+
+        try {
             if (this._presentation)
                 this._presentation.destroy();
         } catch (e) {
@@ -102,13 +135,5 @@ export default class DisplayAndCastExtension extends Extension {
             _warn('DisplayConfig destroy failed', e);
         }
         this._displayConfig = null;
-
-        try {
-            if (this._indicator)
-                this._indicator.destroy();
-        } catch (e) {
-            _warn('Indicator destroy failed', e);
-        }
-        this._indicator = null;
     }
 }

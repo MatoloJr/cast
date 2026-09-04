@@ -105,3 +105,48 @@
   font-weight: 500;
   margin-top: 4px;
 }
+
+.dac-section-label {
+  font-weight: 500;
+  padding: 2px 0 4px 0;
+}
+
+.dac-cast-section {
+  spacing: 6px;
+  padding: 4px 0 0 0;
+}
+
+.dac-cast-header {
+  spacing: 8px;
+}
+
+.dac-cast-refresh {
+  min-height: 28px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-weight: 500;
+}
+
+.dac-cast-status {
+  padding: 2px 0;
+}
+
+.dac-cast-list {
+  spacing: 6px;
+}
+
+.dac-cast-device-row {
+  spacing: 8px;
+  padding: 4px 0;
+}
+
+.dac-cast-device-name {
+  font-weight: 500;
+}
+
+.dac-cast-action {
+  min-height: 28px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-weight: 500;
+}

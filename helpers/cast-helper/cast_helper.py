@@ -474,7 +474,8 @@ class CastService(dbus.service.Object):
             pipeline = StreamPipeline()
             port = pipeline.start(pw_fd, node_id)
             self._pipeline = pipeline
-            # Do not close pw_fd here — pipeline owns it
+            # FD transferred to GStreamer; portal must not close it.
+            portal._pw_fd = None
 
             lan = _lan_ip()
             url = f"http://{lan}:{port}/"
