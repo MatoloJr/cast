@@ -32,8 +32,11 @@ PORTAL_PATH = "/org/freedesktop/portal/desktop"
 SCREENCAST_IFACE = "org.freedesktop.portal.ScreenCast"
 REQUEST_IFACE = "org.freedesktop.portal.Request"
 
-# Idle | connecting | casting | error
-StatusTuple = tuple  # (state, device_id, device_name, error)
+
+def _sender_token(bus: dbus.SessionBus) -> str:
+    # Portal request paths use the unique name with ':' stripped and '.' → '_'
+    unique = bus.get_unique_name()  # e.g. :1.42
+    return unique[1:].replace(".", "_")
 
 
 def _lan_ip() -> str:
@@ -100,12 +103,7 @@ class PortalScreenCast:
         self._session: Optional[str] = None
         self._node_id: Optional[int] = None
         self._pw_fd: Optional[int] = None
-        self._sender_token = dbus.safe_name_encode(
-            bus.get_unique_name().replace(".", "_").lstrip(":")
-        )
-
-    def _new_token(self) -> str:
-        return uuid.uuid4().hex
+        self._sender = _sender_token(bus)
 
     def _call_with_response(
         self,
@@ -115,12 +113,14 @@ class PortalScreenCast:
         timeout: float = 120.0,
     ) -> dict:
         options = dict(options or {})
-        request_token = self._new_token()
+        request_token = uuid.uuid4().hex
         options["handle_token"] = request_token
-        request_path = f"/org/freedesktop/portal/desktop/request/{self._sender_token}/{request_token}"
+        request_path = (
+            f"/org/freedesktop/portal/desktop/request/{self._sender}/{request_token}"
+        )
 
         done = threading.Event()
-        result: dict[str, Any] = {"response": None, "results": None, "error": None}
+        result: dict[str, Any] = {"response": None, "results": None}
 
         def on_response(response, results):
             result["response"] = int(response)
@@ -136,24 +136,26 @@ class PortalScreenCast:
         try:
             method(*(args + (options,)), dbus_interface=SCREENCAST_IFACE)
             if not done.wait(timeout):
-                raise TimeoutError("Portal request timed out")
+                raise TimeoutError(
+                    "Screen share dialog timed out — approve the portal prompt"
+                )
         finally:
             try:
                 match.remove()
             except Exception:
                 pass
 
-        if result["error"]:
-            raise RuntimeError(result["error"])
         if result["response"] != 0:
             raise RuntimeError(
-                f"Portal request denied or failed (code {result['response']})"
+                "Screen share cancelled or denied"
+                if result["response"] == 1
+                else f"Portal request failed (code {result['response']})"
             )
         return dict(result["results"] or {})
 
     def start(self, multiple: bool = False) -> tuple[int, int]:
         """Return (pipewire_fd, node_id). Shows the portal picker UI."""
-        session_token = self._new_token()
+        session_token = uuid.uuid4().hex
         results = self._call_with_response(
             self._portal.CreateSession,
             options={"session_handle_token": session_token},
@@ -173,7 +175,7 @@ class PortalScreenCast:
         start_results = self._call_with_response(
             self._portal.Start,
             self._session,
-            "",  # parent window
+            "",
             options={},
             timeout=180.0,
         )
@@ -181,7 +183,6 @@ class PortalScreenCast:
         if not streams:
             raise RuntimeError("Portal returned no streams")
 
-        # streams: a(ua{sv}) → [(node_id, props), ...]
         first = streams[0]
         self._node_id = int(first[0])
 
@@ -250,11 +251,12 @@ class StreamPipeline:
             self._pipeline = None
             raise RuntimeError("Failed to start GStreamer pipeline")
 
-        # Wait briefly for PLAYING
         bus = self._pipeline.get_bus()
         msg = bus.timed_pop_filtered(
             3 * Gst.SECOND,
-            Gst.MessageType.ERROR | Gst.MessageType.ASYNC_DONE | Gst.MessageType.STATE_CHANGED,
+            Gst.MessageType.ERROR
+            | Gst.MessageType.ASYNC_DONE
+            | Gst.MessageType.STATE_CHANGED,
         )
         if msg and msg.type == Gst.MessageType.ERROR:
             err, debug = msg.parse_error()
@@ -282,80 +284,32 @@ class StreamPipeline:
 class ChromecastController:
     def __init__(self):
         self._casts: dict[str, Any] = {}
-        self._browser = None
         self._lock = threading.Lock()
-        self._active = None  # Chromecast instance
+        self._active = None
 
     def refresh(self, timeout: float = 5.0) -> None:
-        import zeroconf
         import pychromecast
-        from pychromecast.discovery import CastBrowser, SimpleCastListener
 
-        discovered: dict[str, Any] = {}
-
-        def add_cast(uuid_str, service):
-            discovered[str(uuid_str)] = service
-
-        def update_cast(uuid_str, service):
-            discovered[str(uuid_str)] = service
-
-        def remove_cast(uuid_str, service):
-            discovered.pop(str(uuid_str), None)
-
-        zc = zeroconf.Zeroconf()
-        listener = SimpleCastListener(add_cast, remove_cast, update_cast)
-        browser = CastBrowser(listener, zc)
-        browser.start_discovery()
-        time.sleep(timeout)
-        browser.stop_discovery()
+        chromecasts, browser = pychromecast.get_chromecasts(timeout=timeout)
         try:
-            zc.close()
+            browser.stop_discovery()
         except Exception:
             pass
 
         with self._lock:
             self._casts = {}
-            for uid, service in discovered.items():
-                host = getattr(service, "host", None) or getattr(service, "ip", None)
-                name = getattr(service, "friendly_name", None) or getattr(
-                    service, "name", uid
-                )
-                model = getattr(service, "model_name", None) or ""
-                port = getattr(service, "port", 8009) or 8009
-                if not host:
-                    continue
+            for cc in chromecasts:
+                uid = str(cc.uuid)
                 self._casts[uid] = {
                     "id": uid,
-                    "name": str(name),
-                    "model": str(model),
-                    "host": str(host),
-                    "port": int(port),
+                    "name": cc.name or uid,
+                    "model": getattr(cc.cast_info, "model_name", "") or "",
+                    "host": cc.cast_info.host,
+                    "port": cc.cast_info.port,
                     "online": True,
+                    "_cc": cc,
                 }
-
-        # Also try get_chromecasts as a fallback / supplement
-        try:
-            import pychromecast
-
-            chromecasts, browser = pychromecast.get_chromecasts(timeout=timeout)
-            try:
-                browser.stop_discovery()
-            except Exception:
-                pass
-            with self._lock:
-                for cc in chromecasts:
-                    uid = str(cc.uuid)
-                    self._casts[uid] = {
-                        "id": uid,
-                        "name": cc.name or uid,
-                        "model": getattr(cc.cast_info, "model_name", "") or "",
-                        "host": cc.cast_info.host,
-                        "port": cc.cast_info.port,
-                        "online": True,
-                        "_cc": cc,
-                    }
-        except Exception as exc:
-            LOG.debug("get_chromecasts fallback: %s", exc)
+        LOG.info("Discovered %d Chromecast device(s)", len(self._casts))
 
     def list_devices(self) -> list[tuple[str, str, str, bool]]:
         with self._lock:
@@ -372,37 +326,36 @@ class ChromecastController:
             if info and info.get("_cc"):
                 return info["_cc"]
 
-        # Resolve by uuid via discovery
         self.refresh(timeout=4.0)
         with self._lock:
             info = self._casts.get(device_id)
+            if info and info.get("_cc"):
+                return info["_cc"]
             if not info:
                 raise RuntimeError(f"Device not found: {device_id}")
-            if info.get("_cc"):
-                return info["_cc"]
 
-        chromecasts, browser = pychromecast.get_chromecasts(timeout=5.0)
-        try:
-            browser.stop_discovery()
-        except Exception:
-            pass
-        for cc in chromecasts:
-            if str(cc.uuid) == device_id:
-                return cc
-        # Try connect by host
-        with self._lock:
-            info = self._casts.get(device_id)
-        if not info:
-            raise RuntimeError(f"Device not found: {device_id}")
-        cast = pychromecast.Chromecast(info["host"], port=info["port"])
+        cast = pychromecast.Chromecast(
+            host=info["host"], port=info.get("port") or 8009
+        )
         return cast
 
     def play_url(self, device_id: str, url: str, content_type: str = "video/mp2t"):
+        import pychromecast
+
         cast = self.get_cast(device_id)
-        cast.wait(timeout=10)
+        cast.wait(timeout=15)
         mc = cast.media_controller
-        mc.play_media(url, content_type)
-        mc.block_until_active(timeout=15)
+        kwargs = {
+            "stream_type": getattr(pychromecast, "STREAM_TYPE_LIVE", "LIVE"),
+        }
+        try:
+            mc.play_media(url, content_type, **kwargs)
+        except TypeError:
+            mc.play_media(url, content_type)
+        try:
+            mc.block_until_active(timeout=20)
+        except Exception as exc:
+            LOG.warning("block_until_active: %s", exc)
         self._active = cast
         return cast
 
@@ -423,18 +376,16 @@ class ChromecastController:
 
 class CastService(dbus.service.Object):
     def __init__(self, bus: dbus.SessionBus):
-        self._bus = bus
         bus_name = dbus.service.BusName(BUS_NAME, bus)
         super().__init__(bus_name, OBJECT_PATH)
 
+        self._bus = bus
         self._cc = ChromecastController()
         self._portal: Optional[PortalScreenCast] = None
         self._pipeline: Optional[StreamPipeline] = None
-        self._status: StatusTuple = ("idle", "", "", "")
-        self._lock = threading.Lock()
-        self._worker: Optional[threading.Thread] = None
+        self._status = ("idle", "", "", "")
+        self._op_lock = threading.Lock()
 
-        # Initial discovery in background
         threading.Thread(target=self._bg_refresh, daemon=True).start()
 
     def _bg_refresh(self) -> None:
@@ -449,7 +400,12 @@ class CastService(dbus.service.Object):
     ) -> None:
         self._status = (state, device_id, device_name, error)
         status = self._status
-        GLib.idle_add(lambda: self.SessionChanged(status) or False)
+
+        def emit():
+            self.SessionChanged(status)
+            return False
+
+        GLib.idle_add(emit)
 
     @dbus.service.method(IFACE, in_signature="", out_signature="a(sssb)")
     def ListDevices(self):
@@ -462,22 +418,45 @@ class CastService(dbus.service.Object):
 
     @dbus.service.method(IFACE, in_signature="ss", out_signature="")
     def CastDesktop(self, device_id: str, source: str):
+        """Start mirroring. Runs work off-thread so the portal dialog can respond."""
         device_id = str(device_id)
         source = str(source or "primary")
-        with self._lock:
-            if self._worker and self._worker.is_alive():
-                raise dbus.DBusException(
-                    "org.cast.tools.Cast1.Busy",
-                    "A cast operation is already in progress",
-                )
-            self._worker = threading.Thread(
-                target=self._cast_desktop_worker,
-                args=(device_id, source),
-                daemon=True,
+        if not self._op_lock.acquire(blocking=False):
+            raise dbus.DBusException(
+                "org.cast.tools.Cast1.Busy",
+                "A cast operation is already in progress",
             )
-            self._worker.start()
 
-    def _cast_desktop_worker(self, device_id: str, source: str) -> None:
+        result: dict[str, Any] = {"exc": None}
+        done = threading.Event()
+
+        def work():
+            try:
+                self._cast_desktop_impl(device_id, source)
+            except Exception as exc:
+                result["exc"] = exc
+            finally:
+                done.set()
+
+        threading.Thread(target=work, daemon=True).start()
+
+        # Nested iteration: keep dispatching D-Bus/portal signals while waiting.
+        ctx = GLib.MainContext.default()
+        while not done.is_set():
+            ctx.iteration(True)
+
+        self._op_lock.release()
+        exc = result["exc"]
+        if exc is None:
+            return
+        if isinstance(exc, dbus.DBusException):
+            raise exc
+        raise dbus.DBusException(
+            "org.cast.tools.Cast1.Failed",
+            str(exc) or "Cast failed",
+        )
+
+    def _cast_desktop_impl(self, device_id: str, source: str) -> None:
         device_name = device_id
         try:
             self._teardown_stream(stop_cast=True)
@@ -491,9 +470,11 @@ class CastService(dbus.service.Object):
             pw_fd, node_id = portal.start(multiple=multiple)
             self._portal = portal
 
+            # Portal transferred the FD; GStreamer takes ownership via pipewiresrc
             pipeline = StreamPipeline()
             port = pipeline.start(pw_fd, node_id)
             self._pipeline = pipeline
+            # Do not close pw_fd here — pipeline owns it
 
             lan = _lan_ip()
             url = f"http://{lan}:{port}/"
@@ -507,13 +488,13 @@ class CastService(dbus.service.Object):
             err = str(exc) or traceback.format_exc(limit=1)
             self._teardown_stream(stop_cast=True)
             self._set_status("error", device_id, device_name, err)
-            # Surface as D-Bus error for the blocking caller — already async;
-            # SessionChanged carries the error for the UI.
+            raise dbus.DBusException("org.cast.tools.Cast1.Failed", err)
 
     @dbus.service.method(IFACE, in_signature="", out_signature="")
     def Stop(self):
-        self._teardown_stream(stop_cast=True)
-        self._set_status("idle", "", "", "")
+        with self._op_lock:
+            self._teardown_stream(stop_cast=True)
+            self._set_status("idle", "", "", "")
 
     @dbus.service.method(IFACE, in_signature="", out_signature="(siss)")
     def GetStatus(self):

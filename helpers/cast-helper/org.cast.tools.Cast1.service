@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.cast.tools.Cast1
+Exec=/bin/false
+SystemdService=cast-helper.service
