@@ -7,19 +7,19 @@ todos:
     status: completed
   - id: device-multiselect-ui
     content: "Rebuild menu: empty when off; selectable devices + Connect; branch UI by selection count"
-    status: pending
+    status: completed
   - id: connected-manage-ui
     content: "Post-connect: normal features if 1 device; advanced Manage/group if 2+; remove presentation switch"
-    status: pending
+    status: completed
   - id: helper-multi-cast
     content: Extend cast-helper + castService for CastDevices / ListSessions / DisconnectDevice
-    status: in_progress
+    status: completed
   - id: styles-readme
     content: Compact responsive CSS for new rows/chips; README + metadata UX notes
-    status: pending
+    status: completed
   - id: sync-affected
     content: Update every affected file (schema, extension, helper, styles, README, metadata)
-    status: pending
+    status: completed
 isProject: false
 ---
 

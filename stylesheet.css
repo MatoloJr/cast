@@ -1,18 +1,120 @@
-/* Action button grid inside the Cast Display Quick Settings menu */
-.dac-action-grid {
+/* Cast Display Quick Settings menu */
+
+.dac-root {
   spacing: 6px;
-  padding: 4px 0 8px 0;
+  padding: 2px 0 4px 0;
+}
+
+.dac-body {
+  spacing: 8px;
+}
+
+.dac-empty-hint {
+  padding: 6px 0;
+}
+
+.dac-section-label {
+  font-weight: 500;
+  padding: 2px 0 4px 0;
+}
+
+.dac-cast-header {
+  spacing: 8px;
+}
+
+.dac-cast-refresh {
+  min-height: 28px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-weight: 500;
+}
+
+.dac-cast-status {
+  padding: 2px 0;
+}
+
+.dac-select-hint {
+  padding: 2px 0;
+}
+
+.dac-cast-list {
+  spacing: 4px;
+}
+
+.dac-cast-device-row {
+  spacing: 8px;
+  padding: 4px 6px;
+  border-radius: 8px;
+}
+
+.dac-cast-device-inner {
+  spacing: 8px;
+}
+
+.dac-cast-device-selected {
+  background-color: rgba(53, 132, 228, 0.18);
+}
+
+.dac-select-mark {
+  min-width: 16px;
+  font-weight: 600;
+}
+
+.dac-cast-device-name {
+  font-weight: 500;
+}
+
+.dac-cast-action {
+  min-height: 28px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-weight: 500;
+}
+
+.dac-connect-button {
+  min-height: 32px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+.dac-connect-disabled {
+  opacity: 0.45;
+}
+
+.dac-mode-grid {
+  spacing: 6px;
+  padding: 2px 0 4px 0;
 }
 
 .dac-action-row {
   spacing: 6px;
 }
 
-.dac-action-button {
-  min-height: 32px;
-  padding: 4px 10px;
+.dac-mode-chip {
+  min-height: 28px;
+  padding: 2px 8px;
   border-radius: 999px;
   font-weight: 500;
+  font-size: 0.9em;
+}
+
+.dac-session-block {
+  spacing: 4px;
+  padding: 2px 0 6px 0;
+}
+
+.dac-manage-toggle {
+  min-height: 28px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-weight: 500;
+}
+
+.dac-manage-section {
+  spacing: 6px;
+  padding: 4px 0 0 0;
 }
 
 .dac-grouping-section {
@@ -104,49 +206,4 @@
   border-radius: 999px;
   font-weight: 500;
   margin-top: 4px;
-}
-
-.dac-section-label {
-  font-weight: 500;
-  padding: 2px 0 4px 0;
-}
-
-.dac-cast-section {
-  spacing: 6px;
-  padding: 4px 0 0 0;
-}
-
-.dac-cast-header {
-  spacing: 8px;
-}
-
-.dac-cast-refresh {
-  min-height: 28px;
-  padding: 2px 10px;
-  border-radius: 999px;
-  font-weight: 500;
-}
-
-.dac-cast-status {
-  padding: 2px 0;
-}
-
-.dac-cast-list {
-  spacing: 6px;
-}
-
-.dac-cast-device-row {
-  spacing: 8px;
-  padding: 4px 0;
-}
-
-.dac-cast-device-name {
-  font-weight: 500;
-}
-
-.dac-cast-action {
-  min-height: 28px;
-  padding: 2px 10px;
-  border-radius: 999px;
-  font-weight: 500;
 }

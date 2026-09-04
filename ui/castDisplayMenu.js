@@ -487,15 +487,6 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
 
     _createSelectableDeviceRow(device) {
         const selected = this._selectedIds.has(device.id);
-        const row = new St.Button({
-            style_class: selected
-                ? 'dac-cast-device-row dac-cast-device-selected'
-                : 'dac-cast-device-row',
-            x_expand: true,
-            can_focus: true,
-            track_hover: true,
-        });
-
         const inner = new St.BoxLayout({
             style_class: 'dac-cast-device-inner',
             x_expand: true,
@@ -527,7 +518,16 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         });
         textBox.add_child(meta);
         inner.add_child(textBox);
-        row.set_child(inner);
+
+        const row = new St.Button({
+            style_class: selected
+                ? 'dac-cast-device-row dac-cast-device-selected'
+                : 'dac-cast-device-row',
+            child: inner,
+            x_expand: true,
+            can_focus: true,
+            track_hover: true,
+        });
 
         row.connect('clicked', () => {
             this._toggleDeviceSelection(device);
@@ -575,7 +575,7 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
             x_expand: true,
         });
 
-        for (const row of LAYOUT_ACTIONS) {
+        for (const row of _layoutActions()) {
             const rowBox = new St.BoxLayout({
                 style_class: 'dac-action-row',
                 x_expand: true,
