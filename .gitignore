@@ -1,3 +1,7 @@
 *.shell-extension.zip
 schemas/gschemas.compiled
 helpers/cast-helper/venv/
+**/__pycache__/
+*.pyc
+*.pyo
+.Python

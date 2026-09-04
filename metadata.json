@@ -1,11 +1,11 @@
 {
   "uuid": "display-and-cast@cast.tools",
   "name": "Cast Display",
-  "description": "Manage multi-monitor layouts, presentation mode, and Chromecast screen mirroring from Quick Settings.",
+  "description": "Quick Settings for multi-monitor layouts, presentation mode, Chromecast casting, and Miracast wireless displays (via gnome-network-displays).",
   "shell-version": ["45", "46", "47", "48", "49", "50"],
   "session-modes": ["user"],
   "settings-schema": "org.gnome.shell.extensions.display-and-cast",
   "gettext-domain": "display-and-cast",
   "url": "https://github.com/MatoloJr/cast",
-  "version": 2
+  "version": 3
 }

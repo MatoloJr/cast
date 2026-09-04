@@ -4,7 +4,7 @@ overview: Phase 3 cleans the repo, ships a one-command install + GitHub release 
 todos:
   - id: p3-hygiene-bugs
     content: Cleanup unused/tracked junk; fix PipeWire fd ownership + HTTP serve; metadata v3
-    status: pending
+    status: in_progress
   - id: p3-windows-ux
     content: Auto-scan on menu open, Connect/Disconnect, last-device reconnect, continuous discovery
     status: pending

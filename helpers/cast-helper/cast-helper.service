@@ -1,12 +1,11 @@
 [Unit]
-Description=Cast Display Chromecast helper
-Documentation=file://%h/.local/share/cast-display/README.md
+Description=Cast Display helper (Chromecast + Miracast bridge)
 PartOf=graphical-session.target
 
 [Service]
 Type=dbus
 BusName=org.cast.tools.Cast1
-ExecStart=%h/.local/share/cast-display/cast-helper/venv/bin/python %h/.local/share/cast-display/cast-helper/cast_helper.py
+ExecStart=@PYTHON@ @SCRIPT@
 Restart=on-failure
 RestartSec=2
 Environment=PYTHONUNBUFFERED=1
