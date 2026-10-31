@@ -86,8 +86,15 @@ class StreamOptions:
         return 6000 if self.max_height > 720 else 4000
 
     @classmethod
-    def from_variant(cls, options: dict[str, Any]) -> "StreamOptions":
+    def from_variant(
+        cls, options: dict[str, Any], hw_encode: bool = True
+    ) -> "StreamOptions":
         opts = cls()
+        if not hw_encode and "max_height" not in options:
+            # Measured on the reference machine: 1080p30 through x264enc
+            # veryfast/zerolatency costs about 1.2 cores. 720p is the honest
+            # default without a hardware encoder; prefs can raise it.
+            opts.max_height = 720
         raw_mode = str(options.get("mode", opts.mode))
         if raw_mode not in (MODE_MIRROR, MODE_EXTEND):
             raise ValueError(f"unknown mode {raw_mode!r}")

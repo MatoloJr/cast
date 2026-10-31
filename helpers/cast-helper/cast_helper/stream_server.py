@@ -23,7 +23,7 @@ from typing import Any, Callable, Optional
 
 from gi.repository import Gio, GLib
 
-from . import config, netutil
+from . import config, dev_harness, netutil
 
 LOG = logging.getLogger("cast-helper.server")
 
@@ -44,7 +44,7 @@ class StreamServer:
         self.token = secrets.token_hex(16)          # 128 bits
         self.port = netutil.pick_port(port_range)
         self._service: Optional[Gio.SocketService] = None
-        self._allowed: set[str] = {"127.0.0.1", "::1"}
+        self._allowed: set[str] = set()
         self._on_client: Optional[Callable[[Gio.Socket], None]] = None
         # Keep connections referenced: multisocketsink writes to the fd, and
         # letting Python drop the GSocketConnection would close it underneath.
@@ -67,7 +67,9 @@ class StreamServer:
         return f"http://{ip}:{self.port}{self.path}"
 
     def set_allowed_hosts(self, hosts) -> None:
-        self._allowed = netutil.allowlist_for(hosts)
+        self._allowed = netutil.allowlist_for(
+            hosts, include_loopback=dev_harness.enabled()
+        )
         LOG.info("allowlist for %s: %s", self.stream_id, sorted(self._allowed))
 
     def start(self, on_client: Callable[[Gio.Socket], None]) -> None:

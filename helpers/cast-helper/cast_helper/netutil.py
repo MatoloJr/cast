@@ -94,8 +94,20 @@ def same_subnet(a: str, b: str, prefix: int = 24) -> bool:
         return False
 
 
-def allowlist_for(hosts: Iterable[str]) -> set[str]:
-    """Receiver hosts plus loopback, for the stream server's IP allowlist."""
-    allowed = {"127.0.0.1", "::1"}
-    allowed.update(h for h in hosts if h)
+LOOPBACK = frozenset({"127.0.0.1", "::1"})
+
+
+def allowlist_for(hosts: Iterable[str], include_loopback: bool = False) -> set[str]:
+    """The receiver hosts attached to a stream, and nothing else.
+
+    Loopback is **not** granted by default. The brief allows it "for the dev
+    harness", but adding it unconditionally would let any local process that
+    guessed the token read the user's screen, which is a hole on a
+    multi-user machine for no benefit in production. It is therefore granted
+    only when the dev harness is running, or when a receiver genuinely is on
+    loopback (which is what a fake receiver is).
+    """
+    allowed = {h for h in hosts if h}
+    if include_loopback or allowed & LOOPBACK:
+        allowed |= set(LOOPBACK)
     return allowed

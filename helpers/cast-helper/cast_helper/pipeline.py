@@ -53,6 +53,12 @@ ENCODERS = (
 
 AUDIO_ENCODERS = ("fdkaacenc", "avenc_aac", "voaacenc")
 
+# A screen that stops producing frames is not a still picture, it is a dead
+# stream. Without this the receiver sits on the last frame indefinitely and
+# the UI keeps claiming "Playing".
+WATCHDOG_SECONDS = 5.0
+WATCHDOG_POLL_SECONDS = 2
+
 
 def have(element: str) -> bool:
     init_gst()
@@ -64,9 +70,49 @@ def available_encoders() -> list[str]:
 
 
 def pick_encoder() -> Optional[tuple[str, str]]:
+    """First encoder present in the registry. Presence, not proof."""
     for name, kind in ENCODERS:
         if have(name):
             return name, kind
+    return None
+
+
+_verified: Optional[tuple[str, str, str]] = None
+
+
+def select_working_encoder(force: bool = False) -> Optional[tuple[str, str, str]]:
+    """First encoder that actually encodes, as (name, kind, note).
+
+    A present element is not a working element: VA-API is routinely installed
+    on machines with no usable encode device, and `vah264enc` then builds
+    fine and fails at runtime. Each candidate is handed ten real frames
+    before it is trusted, and the result is cached because it cannot change
+    without a driver change.
+    """
+    global _verified
+    if _verified is not None and not force:
+        return _verified
+
+    attempts: list[str] = []
+    for name, kind in ENCODERS:
+        if not have(name):
+            continue
+        ok, detail = test_encode(name)
+        if ok:
+            note = ""
+            if attempts:
+                note = "fell back after " + ", ".join(attempts)
+                LOG.warning("using %s; %s", name, note)
+            else:
+                LOG.info("encoder %s verified (%s)", name, kind)
+            _verified = (name, kind, note)
+            return _verified
+        attempts.append(f"{name} ({detail})")
+        LOG.warning("encoder %s is present but does not work: %s", name, detail)
+
+    if attempts:
+        LOG.error("no working H.264 encoder; tried %s", "; ".join(attempts))
+    _verified = None
     return None
 
 
@@ -152,7 +198,11 @@ class Pipeline:
         self._owned_fd: Optional[int] = None
         self._encoder_name = ""
         self._encoder_kind = ""
+        self._encoder_note = ""
         self._clients = 0
+        self._last_buffer = 0.0
+        self._watchdog: Optional[int] = None
+        self._failed = False
 
     # -- properties --------------------------------------------------------
 
@@ -165,6 +215,10 @@ class Pipeline:
         return self._encoder_kind
 
     @property
+    def encoder_note(self) -> str:
+        return self._encoder_note
+
+    @property
     def clients(self) -> int:
         return self._clients
 
@@ -172,39 +226,53 @@ class Pipeline:
 
     def _description(self, fd: int, node_id: int) -> str:
         opts = self._options
-        chosen = pick_encoder()
+        chosen = select_working_encoder()
         if chosen is None:
             raise PipelineError(
-                "no H.264 encoder available; install gstreamer1.0-plugins-ugly "
-                "(x264enc) or gstreamer1.0-plugins-bad (VA-API)"
+                "no working H.264 encoder; install gstreamer1.0-plugins-ugly "
+                "(x264enc) or gstreamer1.0-plugins-bad (VA-API), then run "
+                "cast_helper --doctor"
             )
-        self._encoder_name, self._encoder_kind = chosen
+        self._encoder_name, self._encoder_kind, self._encoder_note = chosen
 
-        height = min(opts.max_height, 1080)
-        width = int(height * 16 / 9)
-        # Encoders need even dimensions.
-        width -= width % 2
-        height -= height % 2
+        # A cap, not a target. Ranges with a step of 2 keep dimensions even
+        # for the encoder, let videoscale pass a smaller screen straight
+        # through instead of upscaling it, and preserve aspect ratio via
+        # pixel-aspect-ratio plus add-borders. Verified: a 1280x720 source
+        # stays 1280x720, a 2560x1440 source becomes 1920x1080.
+        max_height = min(opts.max_height, 1080)
+        max_width = min(int(max_height * 16 / 9), 1920)
+        max_width -= max_width % 2
+        max_height -= max_height % 2
 
         source = dev_harness.source_description(fd, node_id, opts.audio)
-        encoder = encoder_settings(self._encoder_name, opts.fps, opts.effective_bitrate())
+        fps = opts.fps
+        encoder = encoder_settings(self._encoder_name, fps, opts.effective_bitrate())
 
         desc = (
             f"{source} ! "
             f"videoconvert ! videoscale add-borders=true ! videorate ! "
-            f"video/x-raw,format=NV12,width={width},height={height},"
-            f"framerate={opts.fps}/1 ! "
+            f"video/x-raw,format=NV12,"
+            f"width=[2,{max_width},2],height=[2,{max_height},2],"
+            f"pixel-aspect-ratio=1/1,framerate=[1/1,{opts.fps}/1] ! "
             f"queue leaky=downstream max-size-buffers=3 ! "
             f"{encoder} ! h264parse config-interval=-1 ! "
             f"video/x-h264,stream-format=avc,alignment=au,profile=high ! "
             f"matroskamux name=mux streamable=true ! "
             f"queue max-size-buffers=64 ! "
             f"multisocketsink name=sink "
-            # sync-method=2 (latest-keyframe) and recover-policy=3
-            # (most-recent-keyframe) are what make a late joiner decodable.
+            # sync-method=latest-keyframe and recover-policy=keyframe are
+            # what make a late joiner decodable: the sink replays the
+            # muxer's streamheader, then starts it on a keyframe.
             f"blocksize=32768 burst-format=buffers "
             f"sync-method=latest-keyframe recover-policy=keyframe "
-            f"timeout=20000000000"
+            # A receiver that cannot keep up is recovered at soft-max and
+            # dropped at max, so one slow TV costs bounded memory and never
+            # back-pressures the encoder or the other receivers.
+            f"unit-format=buffers buffers-soft-max={fps * 2} "
+            f"buffers-max={fps * 4} "
+            # And one that stops reading entirely is disconnected.
+            f"timeout=10000000000"
         )
 
         if opts.audio:
@@ -238,6 +306,8 @@ class Pipeline:
         bus.add_signal_watch()
         self._bus_watch = bus.connect("message", self._on_bus_message)
 
+        self._install_watchdog()
+
         result = self._pipeline.set_state(Gst.State.PLAYING)
         if result == Gst.StateChangeReturn.FAILURE:
             raise PipelineError("pipeline refused to start")
@@ -245,7 +315,46 @@ class Pipeline:
             "pipeline started with %s (%s)", self._encoder_name, self._encoder_kind
         )
 
+    # -- watchdog ----------------------------------------------------------
+
+    def _install_watchdog(self) -> None:
+        """Count muxed buffers reaching the sink, and alarm if they stop."""
+        assert self._sink is not None
+        pad = self._sink.get_static_pad("sink")
+        if pad is None:
+            LOG.warning("no sink pad; watchdog disabled")
+            return
+
+        def on_buffer(_pad, _info):
+            self._last_buffer = GLib.get_monotonic_time() / 1e6
+            return Gst.PadProbeReturn.OK
+
+        pad.add_probe(Gst.PadProbeType.BUFFER, on_buffer)
+        self._last_buffer = GLib.get_monotonic_time() / 1e6
+        self._watchdog = GLib.timeout_add_seconds(
+            WATCHDOG_POLL_SECONDS, self._check_watchdog
+        )
+
+    def _check_watchdog(self) -> bool:
+        if self._pipeline is None or self._failed:
+            self._watchdog = None
+            return False
+        now = GLib.get_monotonic_time() / 1e6
+        stalled = now - self._last_buffer
+        if stalled > WATCHDOG_SECONDS:
+            self._failed = True
+            self._watchdog = None
+            LOG.error("no encoded frames for %.1fs; declaring the stream dead", stalled)
+            self._on_error(
+                f"the screen stopped producing frames for {stalled:.0f} seconds"
+            )
+            return False
+        return True
+
     def stop(self) -> None:
+        if self._watchdog is not None:
+            GLib.source_remove(self._watchdog)
+            self._watchdog = None
         if self._pipeline is not None:
             bus = self._pipeline.get_bus()
             if self._bus_watch is not None:
@@ -293,10 +402,14 @@ class Pipeline:
         if message.type == Gst.MessageType.ERROR:
             err, debug = message.parse_error()
             LOG.error("pipeline error: %s (%s)", err.message, debug)
-            self._on_error(err.message)
+            if not self._failed:
+                self._failed = True
+                self._on_error(err.message)
         elif message.type == Gst.MessageType.EOS:
             LOG.error("pipeline reached end of stream")
-            self._on_error("the capture stream ended")
+            if not self._failed:
+                self._failed = True
+                self._on_error("the screen capture ended")
         elif message.type == Gst.MessageType.WARNING:
             warn, debug = message.parse_warning()
             LOG.warning("pipeline warning: %s (%s)", warn.message, debug)
@@ -306,7 +419,7 @@ def capabilities() -> dict[str, Any]:
     """What this machine can actually do, for the Capabilities property."""
     init_gst()
     encoders = available_encoders()
-    chosen = pick_encoder()
+    chosen = select_working_encoder()
     audio_encoder = pick_audio_encoder()
     virtual = False
     try:
@@ -329,6 +442,7 @@ def capabilities() -> dict[str, Any]:
     return {
         "encoders": encoders,
         "encoder": chosen[0] if chosen else "",
+        "encoder_note": chosen[2] if chosen else "",
         "hw_encode": bool(chosen and "hardware" in chosen[1]),
         "virtual_source": virtual,
         "audio": bool(audio_encoder),

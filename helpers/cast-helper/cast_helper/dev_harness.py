@@ -31,10 +31,23 @@ FAKE_PREFIX = "fake:"
 # Deterministic UUIDs so a fake device keeps its identity across restarts.
 _FAKE_NS = uuid.UUID("3f1a0c7e-6f3e-4a21-9c0b-0c7a5b2d9e11")
 
-TEST_VIDEO_DESC = (
-    "videotestsrc is-live=true pattern=ball ! "
-    "video/x-raw,width=1280,height=720,framerate=30/1"
-)
+def test_source_size() -> tuple[int, int, int]:
+    """CAST_HELPER_TEST_SIZE=WxH[@fps], default 1280x720@30."""
+    raw = os.environ.get("CAST_HELPER_TEST_SIZE", "1280x720@30")
+    try:
+        geometry, _, fps = raw.partition("@")
+        width, _, height = geometry.partition("x")
+        return int(width), int(height), int(fps or 30)
+    except ValueError:
+        return 1280, 720, 30
+
+
+def test_video_description() -> str:
+    width, height, fps = test_source_size()
+    return (
+        "videotestsrc is-live=true pattern=ball ! "
+        f"video/x-raw,width={width},height={height},framerate={fps}/1"
+    )
 TEST_AUDIO_DESC = "audiotestsrc is-live=true wave=ticks"
 
 
@@ -87,7 +100,7 @@ def fake_devices() -> list[Any]:
 def source_description(fd: int, node_id: int, audio: bool = False) -> str:
     """parse_launch fragment for the capture source, test or real."""
     if test_source_enabled():
-        return TEST_VIDEO_DESC
+        return test_video_description()
     return (
         f"pipewiresrc fd={fd} path={node_id} do-timestamp=true "
         f"keepalive-time=1000 always-copy=false"
@@ -150,7 +163,8 @@ def describe() -> Optional[str]:
         return None
     bits = []
     if test_source_enabled():
-        bits.append("test video source (videotestsrc ball 720p30)")
+        width, height, fps = test_source_size()
+        bits.append(f"test video source (videotestsrc ball {width}x{height}@{fps})")
     count = fake_device_count()
     if count:
         bits.append(f"{count} fake receiver(s)")

@@ -92,14 +92,46 @@ class _MediaListener:
 
 
 class _ConnectionListener:
-    def __init__(self, device_id: str, report: Callable[[str, str, str], None]):
+    """Retries a dropped receiver a few times before giving up on it.
+
+    A TV that drops off Wi-Fi for a moment should come back on its own; one
+    that is switched off should not leave the UI claiming it is playing.
+    """
+
+    def __init__(
+        self,
+        device_id: str,
+        report: Callable[[str, str, str], None],
+        reconnect: Callable[[str, int], None],
+    ):
         self._device_id = device_id
         self._report = report
+        self._reconnect = reconnect
+        self._attempts = 0
 
     def new_connection_status(self, status) -> None:
         state = getattr(status, "status", "")
-        if state == "LOST":
-            self._report(self._device_id, STATE_ERROR, "lost connection to the device")
+        if state == "CONNECTED":
+            if self._attempts:
+                LOG.info("%s reconnected", self._device_id)
+            self._attempts = 0
+            return
+        if state != "LOST":
+            return
+        self._attempts += 1
+        if self._attempts > MAX_RECONNECTS:
+            self._report(
+                self._device_id, STATE_ERROR,
+                f"lost connection after {MAX_RECONNECTS} attempts to reconnect",
+            )
+            return
+        delay = 2 ** (self._attempts - 1)
+        LOG.warning(
+            "lost %s; retry %d/%d in %ds",
+            self._device_id, self._attempts, MAX_RECONNECTS, delay,
+        )
+        self._report(self._device_id, STATE_BUFFERING, "reconnecting")
+        self._reconnect(self._device_id, delay)
 
 
 class ReceiverManager:
@@ -112,6 +144,8 @@ class ReceiverManager:
     ):
         self._sessions: dict[str, Session] = {}
         self._casts: dict[str, Any] = {}
+        # device_id -> (url, content_type), so a reconnect can replay it.
+        self._replay: dict[str, tuple[str, str]] = {}
         self._lock = threading.Lock()
         self._pool = ThreadPoolExecutor(max_workers=6, thread_name_prefix="receiver")
         self._on_session_changed = on_session_changed
@@ -193,12 +227,13 @@ class ReceiverManager:
             media_listener = _MediaListener(device.id, self._post_state)
             cast.media_controller.register_status_listener(media_listener)
             cast.register_connection_listener(
-                _ConnectionListener(device.id, self._post_state)
+                _ConnectionListener(device.id, self._post_state, self._schedule_replay)
             )
 
             with self._lock:
                 self._casts[device.id] = cast
 
+            self._replay[device.id] = (url, content_type)
             LOG.info("casting to %s: %s (%s)", device.name, url, content_type)
             cast.media_controller.play_media(
                 url,
@@ -216,10 +251,42 @@ class ReceiverManager:
             LOG.exception("could not cast to %s", device.name)
             self._post_state(device.id, STATE_ERROR, str(exc) or "connection failed")
 
+    def _schedule_replay(self, device_id: str, delay: int) -> None:
+        """Re-issue play_media once the receiver is back."""
+        context = self._replay.get(device_id)
+        if context is None:
+            return
+
+        def retry() -> bool:
+            if not self.has(device_id):
+                return False
+            self._pool.submit(self._replay_one, device_id)
+            return False
+
+        GLib.timeout_add_seconds(delay, retry)
+
+    def _replay_one(self, device_id: str) -> None:
+        context = self._replay.get(device_id)
+        with self._lock:
+            cast = self._casts.get(device_id)
+        if context is None or cast is None:
+            return
+        url, content_type = context
+        try:
+            cast.wait(timeout=CONNECT_TIMEOUT)
+            cast.media_controller.play_media(
+                url, content_type, stream_type="LIVE",
+                title="Cast Display", autoplay=True,
+            )
+            LOG.info("replayed the stream on %s", device_id)
+        except Exception as exc:
+            self._post_state(device_id, STATE_ERROR, f"could not reconnect: {exc}")
+
     def detach(self, device_id: str) -> bool:
         with self._lock:
             session = self._sessions.pop(device_id, None)
             cast = self._casts.pop(device_id, None)
+            self._replay.pop(device_id, None)
         if session is None:
             return False
         if cast is not None:
@@ -232,6 +299,7 @@ class ReceiverManager:
             casts = list(self._casts.items())
             self._casts.clear()
             self._sessions.clear()
+            self._replay.clear()
         for device_id, cast in casts:
             self._pool.submit(self._quit, cast, device_id)
         self._notify()

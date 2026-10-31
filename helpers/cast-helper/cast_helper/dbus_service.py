@@ -302,7 +302,9 @@ class CastService:
             raise _ServiceError(config.ERR_BUSY, "a cast operation is in progress")
 
         try:
-            opts = config.StreamOptions.from_variant(options)
+            opts = config.StreamOptions.from_variant(
+                options, hw_encode=bool(self._capabilities.get("hw_encode"))
+            )
         except (ValueError, TypeError) as exc:
             raise _ServiceError(config.ERR_UNSUPPORTED, str(exc)) from exc
 

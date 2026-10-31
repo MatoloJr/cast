@@ -86,8 +86,17 @@ def main(argv: list[str] | None = None) -> int:
 
     # Unix signal handlers on the GLib loop, so teardown runs on the main
     # thread with the loop still alive to flush D-Bus traffic.
-    GLib.unix_signal_add(GLib.PRIORITY_HIGH, signal.SIGTERM, handle_signal)
-    GLib.unix_signal_add(GLib.PRIORITY_HIGH, signal.SIGINT, handle_signal)
+    # GLib.unix_signal_add moved to GLibUnix in newer PyGObject; prefer the
+    # new home and fall back so GNOME 45-49 still works.
+    try:
+        gi.require_version("GLibUnix", "2.0")
+        from gi.repository import GLibUnix
+
+        add_signal = GLibUnix.signal_add
+    except (ImportError, ValueError):
+        add_signal = GLib.unix_signal_add
+    add_signal(GLib.PRIORITY_HIGH, signal.SIGTERM, handle_signal)
+    add_signal(GLib.PRIORITY_HIGH, signal.SIGINT, handle_signal)
 
     LOG.info("cast helper ready on %s (API v%d)", config.BUS_NAME, config.API_VERSION)
     try:
