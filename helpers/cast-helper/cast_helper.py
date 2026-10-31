@@ -25,6 +25,8 @@ import dbus.mainloop.glib
 import dbus.service
 from gi.repository import GLib
 
+import dev_harness
+
 LOG = logging.getLogger("cast-helper")
 
 BUS_NAME = "org.cast.tools.Cast1"
@@ -368,7 +370,7 @@ class StreamPipeline:
 
     def start(self, pw_fd: int, node_id: int) -> int:
         self._port = _pick_free_port()
-        self._owned_fd = pw_fd
+        self._owned_fd = pw_fd if pw_fd >= 0 else None
         enc = _encoder_chain()
         if enc and _gst_has("souphttpserver"):
             try:
@@ -403,7 +405,7 @@ class StreamPipeline:
 
         Gst.init(None)
         desc = (
-            f"pipewiresrc fd={pw_fd} path={node_id} do-timestamp=true ! "
+            f"{dev_harness.gst_source_desc(pw_fd, node_id)} ! "
             f"videoconvert ! videoscale ! "
             f"video/x-raw,max-framerate=30/1 ! "
             f"queue max-size-buffers=3 leaky=downstream ! "
@@ -429,9 +431,12 @@ class StreamPipeline:
             raise RuntimeError(f"GStreamer error: {err} ({debug})")
 
     def _start_ffmpeg(self, pw_fd: int, node_id: int) -> None:
-        if not _gst_has("pipewiresrc") or not _gst_has("y4menc"):
+        test_source = dev_harness.test_source_enabled()
+        if not test_source and not _gst_has("pipewiresrc"):
+            raise RuntimeError("Need GStreamer pipewiresrc (gstreamer1.0-pipewire)")
+        if not _gst_has("y4menc"):
             raise RuntimeError(
-                "Need GStreamer pipewiresrc/y4menc, or install "
+                "Need GStreamer y4menc, or install "
                 "gstreamer1.0-plugins-ugly for x264enc"
             )
         if not which("ffmpeg"):
@@ -448,10 +453,7 @@ class StreamPipeline:
         gst_cmd = [
             "gst-launch-1.0",
             "-q",
-            "pipewiresrc",
-            f"fd={pw_fd}",
-            f"path={node_id}",
-            "do-timestamp=true",
+            *dev_harness.gst_source_args(pw_fd, node_id),
             "!",
             "videoconvert",
             "!",
@@ -491,7 +493,7 @@ class StreamPipeline:
             gst_cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            pass_fds=(pw_fd,),
+            pass_fds=() if test_source else (pw_fd,),
         )
         assert self._gst_proc.stdout is not None
         self._ffmpeg_proc = subprocess.Popen(
@@ -597,7 +599,7 @@ class ChromecastController:
 
     def list_entries(self) -> list[tuple[str, str, str, str, bool]]:
         with self._lock:
-            return [
+            entries = [
                 (
                     d["id"],
                     d["name"],
@@ -607,8 +609,14 @@ class ChromecastController:
                 )
                 for d in self._casts.values()
             ]
+        return entries + dev_harness.fake_device_entries()
 
     def device_name(self, device_id: str) -> str:
+        if dev_harness.is_fake_device(device_id):
+            for entry in dev_harness.fake_device_entries():
+                if entry[0] == device_id:
+                    return entry[1]
+            return device_id
         with self._lock:
             info = self._casts.get(device_id)
             if info:
@@ -636,6 +644,13 @@ class ChromecastController:
     def play_url(self, device_id: str, url: str, content_type: str = "video/mp2t"):
         import pychromecast
 
+        if dev_harness.is_fake_device(device_id):
+            receiver = dev_harness.FakeReceiver(device_id, self.device_name(device_id))
+            receiver.play(url)
+            with self._lock:
+                self._active[device_id] = receiver
+            return receiver
+
         cast = self.get_cast(device_id)
         cast.wait(timeout=15)
         mc = cast.media_controller
@@ -659,6 +674,9 @@ class ChromecastController:
             cast = self._active.pop(device_id, None)
         if not cast:
             return False
+        if isinstance(cast, dev_harness.FakeReceiver):
+            cast.stop()
+            return True
         try:
             cast.media_controller.stop()
         except Exception as exc:
@@ -674,6 +692,9 @@ class ChromecastController:
             casts = list(self._active.items())
             self._active.clear()
         for _device_id, cast in casts:
+            if isinstance(cast, dev_harness.FakeReceiver):
+                cast.stop()
+                continue
             try:
                 cast.media_controller.stop()
             except Exception as exc:
@@ -867,15 +888,21 @@ class CastService(dbus.service.Object):
         if self._pipeline and self._stream_url:
             return self._stream_url
 
-        multiple = source == "all"
-        portal = PortalScreenCast(self._bus)
-        pw_fd, node_id = portal.start(multiple=multiple)
-        self._portal = portal
+        if dev_harness.test_source_enabled():
+            # No portal, no PipeWire: the pipeline synthesises its own frames.
+            pipeline = StreamPipeline()
+            pipeline.start(-1, -1)
+            self._pipeline = pipeline
+        else:
+            multiple = source == "all"
+            portal = PortalScreenCast(self._bus)
+            pw_fd, node_id = portal.start(multiple=multiple)
+            self._portal = portal
 
-        pipeline = StreamPipeline()
-        pipeline.start(pw_fd, node_id)
-        self._pipeline = pipeline
-        portal.release_fd()
+            pipeline = StreamPipeline()
+            pipeline.start(pw_fd, node_id)
+            self._pipeline = pipeline
+            portal.release_fd()
 
         lan = _lan_ip()
         self._stream_url = pipeline.stream_url(lan)
@@ -994,10 +1021,21 @@ class CastService(dbus.service.Object):
 
 
 def main() -> int:
+    argv = sys.argv[1:]
+    if "--doctor" in argv:
+        import doctor
+
+        return doctor.run([a for a in argv if a != "--doctor"])
+    if "-h" in argv or "--help" in argv:
+        print("Usage: cast_helper.py [--doctor [--no-discovery]]")
+        return 0
+
+    level = os.environ.get("CAST_HELPER_LOG", "info").upper()
     logging.basicConfig(
-        level=logging.INFO,
+        level=getattr(logging, level, logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    dev_harness.log_banner(LOG)
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
     bus = dbus.SessionBus()
     service = CastService(bus)

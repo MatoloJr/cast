@@ -1,0 +1,83 @@
+Cast Display — doctor
+=====================
+
+System
+------
+  [ok  ] python: 3.14.4
+  [ok  ] kernel: 7.0.0-34-generic
+  [ok  ] distro: Ubuntu 26.04.1 LTS
+  [ok  ] session: wayland / ubuntu:GNOME
+  [ok  ] gnome-shell: GNOME Shell 50.1
+  [ok  ] XDG_RUNTIME_DIR: /run/user/1000
+
+GStreamer
+---------
+  [ok  ] version: 1.28.2
+  [ok  ] pipewiresrc
+  [ok  ] videoconvert
+  [ok  ] videoscale
+  [ok  ] videorate
+  [ok  ] queue
+  [warn] vah264enc: missing
+  [warn] vaapih264enc: missing
+  [ok  ] x264enc
+  [ok  ] openh264enc
+  [ok  ] encoder chosen: x264enc (software)
+         No VA-API H.264 encoder: 1080p30 will cost real CPU.
+  [ok  ] h264parse
+  [ok  ] mpegtsmux
+  [ok  ] mp4mux
+  [warn] isofmp4mux: missing
+  [warn] cmafmux: missing
+  [ok  ] hlssink2
+  [ok  ] pulsesrc
+  [ok  ] audioconvert
+  [ok  ] audioresample
+  [warn] fdkaacenc: missing
+  [ok  ] avenc_aac
+  [ok  ] voaacenc
+  [ok  ] aacparse
+  [ok  ] videotestsrc
+  [ok  ] audiotestsrc
+  [ok  ] appsink
+  [ok  ] souphttpserver absent (expected): GStreamer has no such element; the helper must serve HTTP itself
+
+Encode smoke test
+-----------------
+  [ok  ] test encode: 10 frames through x264enc → mpegtsmux
+
+ffmpeg
+------
+  [ok  ] ffmpeg: ffmpeg version 8.0.1-3ubuntu2+esm5 Copyright (c) 2000-2025 the FFmpeg developers
+  [ok  ] ffprobe: /usr/bin/ffprobe
+
+ScreenCast portal
+-----------------
+  [ok  ] portal version: 5
+  [ok  ] AvailableSourceTypes: 7 (MONITOR|WINDOW|VIRTUAL)
+  [ok  ] AvailableCursorModes: 7 (HIDDEN|EMBEDDED|METADATA)
+
+Miracast (GNOME Network Displays)
+---------------------------------
+  [ok  ] gnome-network-displays: /usr/bin/gnome-network-displays 0.99.0-1
+         0.91+ supports MICE (Miracast over infrastructure).
+
+Network
+-------
+  [warn] iface lo: 127.0.0.1/8
+  [ok  ] iface wlo1: 192.168.100.32/24
+  [ok  ] iface br-3a062c30c970: 172.19.0.1/16
+  [ok  ] iface docker0: 172.17.0.1/16
+         Virtual interfaces present (docker0): the stream URL must be chosen per receiver, not by routing to a public address.
+  [warn] ufw: status needs root; run: sudo ufw status
+
+Cast libraries
+--------------
+  [ok  ] pychromecast: 14.0.10
+  [ok  ] zeroconf: 0.151.3
+
+Cast devices seen in 5 s
+------------------------
+  [ok  ] Smart TV: Smart TV at 192.168.100.13:8009 type=None video=yes
+
+Summary: 0 failure(s), 7 warning(s).
