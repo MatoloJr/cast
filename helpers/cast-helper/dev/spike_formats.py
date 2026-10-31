@@ -39,6 +39,8 @@ from typing import Any, Optional
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
+TEST_AUDIO_DESC = "audiotestsrc is-live=true wave=ticks"
+
 TEST_SRC = (
     "videotestsrc is-live=true pattern=ball ! "
     "video/x-raw,width=1280,height=720,framerate=30/1"
@@ -85,17 +87,41 @@ def encoder_chain() -> str:
     raise SystemExit("No H.264 encoder available (see --doctor)")
 
 
-class TsSource:
-    """videotestsrc → H.264 → MPEG-TS on stdout."""
+def audio_encoder_chain() -> str:
+    import gi
 
-    def __init__(self) -> None:
+    gi.require_version("Gst", "1.0")
+    from gi.repository import Gst
+
+    Gst.init(None)
+    for name, chain in (
+        ("fdkaacenc", "fdkaacenc bitrate=128000"),
+        ("avenc_aac", "avenc_aac bitrate=128000"),
+        ("voaacenc", "voaacenc bitrate=128000"),
+    ):
+        if Gst.ElementFactory.find(name):
+            return chain
+    raise SystemExit("No AAC encoder available (see --doctor)")
+
+
+class TsSource:
+    """videotestsrc (+ optional audiotestsrc) → H.264/AAC → MPEG-TS on stdout."""
+
+    def __init__(self, audio: bool = False, profile: str = "") -> None:
         enc = encoder_chain()
+        caps = f" ! video/x-h264,profile={profile}" if profile else ""
         desc = (
             f"{TEST_SRC} ! videoconvert ! "
-            f"{enc} ! h264parse config-interval=-1 ! "
+            f"{enc}{caps} ! h264parse config-interval=-1 ! "
             f"video/x-h264,stream-format=byte-stream,alignment=au ! "
-            f"mpegtsmux ! fdsink fd=1"
+            f"mpegtsmux name=mux ! fdsink fd=1"
         )
+        if audio:
+            aenc = audio_encoder_chain()
+            desc += (
+                f" {TEST_AUDIO_DESC} ! audioconvert ! audioresample ! "
+                f"audio/x-raw,rate=48000,channels=2 ! {aenc} ! aacparse ! mux."
+            )
         log(f"source: gst-launch-1.0 {desc}")
         self.proc = subprocess.Popen(
             ["gst-launch-1.0", "-q"] + desc.split(),
@@ -224,25 +250,110 @@ class ThreadingServer(socketserver.ThreadingTCPServer):
         super().handle_error(request, client_address)
 
 
+class Stats:
+    """Bytes actually delivered, per client address.
+
+    This is the only trustworthy oracle available without eyes on the TV.
+    A receiver can report PLAYING with an advancing clock while showing
+    nothing (observed on real hardware), but it cannot decode video it never
+    downloaded. Sustained fetching at roughly the encode bitrate means the
+    decoder is consuming frames; a short burst that stops means it gave up.
+    """
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.by_ip: dict[str, dict[str, Any]] = {}
+        self.requests: list[str] = []
+
+    def request(self, ip: str, line: str, headers: Any) -> None:
+        interesting = {
+            k: v for k, v in headers.items()
+            if k.lower() in ("range", "user-agent", "accept", "icy-metadata", "connection")
+        }
+        entry = f"{ip} {line} {interesting}"
+        with self.lock:
+            self.requests.append(entry)
+        log(f"  REQ {entry}")
+
+    def count(self, ip: str, nbytes: int) -> None:
+        now = time.monotonic()
+        with self.lock:
+            rec = self.by_ip.setdefault(
+                ip, {"bytes": 0, "connections": 0, "first": now, "last": now}
+            )
+            rec["bytes"] += nbytes
+            rec["last"] = now
+
+    def open_connection(self, ip: str) -> None:
+        with self.lock:
+            rec = self.by_ip.setdefault(
+                ip, {"bytes": 0, "connections": 0,
+                     "first": time.monotonic(), "last": time.monotonic()}
+            )
+            rec["connections"] += 1
+
+    def summary_for(self, ip: str) -> dict[str, Any]:
+        with self.lock:
+            rec = self.by_ip.get(ip)
+            if not rec:
+                return {"bytes": 0, "connections": 0, "seconds": 0.0, "kbps": 0.0}
+            seconds = max(0.001, rec["last"] - rec["first"])
+            return {
+                "bytes": rec["bytes"],
+                "connections": rec["connections"],
+                "seconds": seconds,
+                "kbps": rec["bytes"] * 8 / seconds / 1000,
+            }
+
+
 class _Quiet(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+    stats: Optional[Stats] = None
 
     def log_message(self, fmt, *args):
         log("http: " + (fmt % args))
 
+    @property
+    def peer(self) -> str:
+        return self.client_address[0]
 
-def serve_fmp4(packager: Fmp4Packager, port: int) -> socketserver.ThreadingTCPServer:
+    def note_request(self) -> None:
+        if self.stats:
+            self.stats.request(self.peer, self.requestline, self.headers)
+            self.stats.open_connection(self.peer)
+
+    def send_counted(self, data: bytes) -> None:
+        if not data:
+            return
+        self.wfile.write(data)
+        self.wfile.flush()
+        if self.stats:
+            self.stats.count(self.peer, len(data))
+
+
+def serve_fmp4(packager: Fmp4Packager, port: int, stats: Stats):
     """Per-client queues: every client gets init + every fragment from join."""
 
     class Handler(_Quiet):
         def do_OPTIONS(self):  # noqa: N802
+            self.note_request()
             self.send_response(200)
             self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+            self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS, HEAD")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def do_HEAD(self):  # noqa: N802
+            self.note_request()
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Accept-Ranges", "none")
+            self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Content-Length", "0")
             self.end_headers()
 
         def do_GET(self):  # noqa: N802
+            self.note_request()
             if not self.path.endswith("stream.mp4"):
                 self.send_error(404)
                 return
@@ -250,13 +361,14 @@ def serve_fmp4(packager: Fmp4Packager, port: int) -> socketserver.ThreadingTCPSe
             self.send_header("Content-Type", "video/mp4")
             self.send_header("Cache-Control", "no-cache")
             self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Accept-Ranges", "none")
             self.send_header("Connection", "close")
             self.end_headers()
             try:
                 with packager.lock:
-                    self.wfile.write(packager.init_segment)
+                    init = packager.init_segment
                     cursor = len(packager.fragments)
-                self.wfile.flush()
+                self.send_counted(init)
                 while not packager.stopped:
                     with packager.lock:
                         while cursor >= len(packager.fragments) and not packager.stopped:
@@ -264,18 +376,17 @@ def serve_fmp4(packager: Fmp4Packager, port: int) -> socketserver.ThreadingTCPSe
                         # Our own view of the ring; never consumed by others.
                         chunk = b"".join(packager.fragments[cursor:])
                         cursor = len(packager.fragments)
-                    if chunk:
-                        self.wfile.write(chunk)
-                        self.wfile.flush()
-            except (BrokenPipeError, ConnectionResetError, OSError):
-                pass
+                    self.send_counted(chunk)
+            except (BrokenPipeError, ConnectionResetError, OSError) as exc:
+                log(f"  client {self.peer} disconnected: {type(exc).__name__}")
 
+    Handler.stats = stats
     httpd = ThreadingServer(("0.0.0.0", port), Handler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     return httpd
 
 
-def serve_ts(ts_stdout: Any, port: int) -> tuple[socketserver.ThreadingTCPServer, Any]:
+def serve_ts(ts_stdout: Any, port: int, stats: Stats):
     """Deliberately reproduces today's shape, but with per-client cursors.
 
     Candidate C is about whether the *container* plays, not about the shared
@@ -303,6 +414,7 @@ def serve_ts(ts_stdout: Any, port: int) -> tuple[socketserver.ThreadingTCPServer
 
     class Handler(_Quiet):
         def do_GET(self):  # noqa: N802
+            self.note_request()
             if not self.path.endswith((".ts", "/")):
                 self.send_error(404)
                 return
@@ -321,18 +433,17 @@ def serve_ts(ts_stdout: Any, port: int) -> tuple[socketserver.ThreadingTCPServer
                             cond.wait(1.0)
                         data = b"".join(chunks[cursor:])
                         cursor = len(chunks)
-                    if data:
-                        self.wfile.write(data)
-                        self.wfile.flush()
-            except (BrokenPipeError, ConnectionResetError, OSError):
-                pass
+                    self.send_counted(data)
+            except (BrokenPipeError, ConnectionResetError, OSError) as exc:
+                log(f"  client {self.peer} disconnected: {type(exc).__name__}")
 
+    Handler.stats = stats
     httpd = ThreadingServer(("0.0.0.0", port), Handler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     return httpd, state
 
 
-def serve_hls(ts_stdout: Any, port: int, workdir: str):
+def serve_hls(ts_stdout: Any, port: int, workdir: str, stats: Stats):
     ff = subprocess.Popen(
         [
             "ffmpeg", "-hide_banner", "-loglevel", "warning",
@@ -358,6 +469,19 @@ def serve_hls(ts_stdout: Any, port: int, workdir: str):
 
         def log_message(self, fmt, *args):
             log("http: " + (fmt % args))
+
+        def send_head(self):
+            stats.request(self.client_address[0], self.requestline, self.headers)
+            stats.open_connection(self.client_address[0])
+            return super().send_head()
+
+        def copyfile(self, source, outputfile):
+            while True:
+                buf = source.read(64 * 1024)
+                if not buf:
+                    break
+                outputfile.write(buf)
+                stats.count(self.client_address[0], len(buf))
 
         def end_headers(self):
             self.send_header("Access-Control-Allow-Origin", "*")
@@ -489,8 +613,12 @@ def run_candidate(kind: str, device_info, duration: float, local_only: bool,
         "position_advanced": None,
         "idle_reason": "",
         "eye": None,
+        "receiver_bytes": 0,
+        "receiver_connections": 0,
+        "receiver_kbps": 0.0,
     }
 
+    stats = Stats()
     source = TsSource()
     httpd = None
     packager = None
@@ -503,10 +631,10 @@ def run_candidate(kind: str, device_info, duration: float, local_only: bool,
             if not packager.wait_ready(20):
                 result["note"] = "packager produced no init segment + fragment"
                 return result
-            httpd = serve_fmp4(packager, port)
+            httpd = serve_fmp4(packager, port, stats)
         elif kind == "hls":
             workdir = tempfile.mkdtemp(prefix="cast-spike-hls-")
-            httpd, extra_proc = serve_hls(source.proc.stdout, port, workdir)
+            httpd, extra_proc = serve_hls(source.proc.stdout, port, workdir, stats)
             deadline = time.monotonic() + 20
             playlist = os.path.join(workdir, "index.m3u8")
             while time.monotonic() < deadline and not os.path.exists(playlist):
@@ -525,7 +653,7 @@ def run_candidate(kind: str, device_info, duration: float, local_only: bool,
             log(f"hls warm-up: {segments} segment(s)")
             log("playlist:\n" + open(playlist, encoding="utf-8").read().strip())
         else:
-            httpd, _ = serve_ts(source.proc.stdout, port)
+            httpd, _ = serve_ts(source.proc.stdout, port, stats)
             time.sleep(2)
 
         log(f"serving {url}")
@@ -577,23 +705,37 @@ def run_candidate(kind: str, device_info, duration: float, local_only: bool,
             time.sleep(1.5)
 
         advanced = recorder.position_advanced()
-        result["transitions"] = [f"{t:.1f}s {s}" for t, s in recorder.transitions]
+        delivered = stats.summary_for(device_info.host)
+        result["transitions"] = [f"{t:.1f}s {st}" for t, st in recorder.transitions]
         result["time_to_playing"] = recorder.first_playing
         result["position_advanced"] = advanced
         result["idle_reason"] = recorder.idle_reason
-        # Decoding, not just loading: PLAYING *and* the position moving on.
-        result["played"] = recorder.first_playing is not None and bool(
-            advanced and advanced > 1.0
-        )
-        if recorder.first_playing is not None and not result["played"]:
-            result["note"] = (
-                f"reached PLAYING but position advanced {advanced if advanced is not None else 0:.1f}s"
-                " — loaded without decoding"
-            )
-        elif result["played"]:
-            result["note"] = f"position advanced {advanced:.1f}s in {duration:.0f}s"
-        else:
-            result["note"] = f"never reached PLAYING{f' ({recorder.idle_reason})' if recorder.idle_reason else ''}"
+        result["receiver_bytes"] = delivered["bytes"]
+        result["receiver_connections"] = delivered["connections"]
+        result["receiver_kbps"] = delivered["kbps"]
+
+        # The receiver's own report is not evidence: a TV can sit in PLAYING
+        # with an advancing clock and a blank screen (observed). Bytes it
+        # actually pulled, sustained over the run, is evidence.
+        megabytes = delivered["bytes"] / 1e6
+        sustained = delivered["seconds"] >= duration * 0.6 and delivered["bytes"] > 1e6
+        result["played"] = sustained
+        log(f"  receiver {device_info.host} pulled {megabytes:.2f} MB over "
+            f"{delivered['connections']} connection(s), {delivered['seconds']:.1f}s, "
+            f"{delivered['kbps']:.0f} kbps")
+
+        bits = [f"{megabytes:.2f} MB in {delivered['connections']} conn"]
+        if recorder.first_playing is not None:
+            bits.append(f"PLAYING@{recorder.first_playing:.1f}s")
+        if advanced is not None:
+            bits.append(f"clock+{advanced:.1f}s")
+        if recorder.idle_reason:
+            bits.append(f"idle={recorder.idle_reason}")
+        if not sustained and delivered["bytes"] > 0:
+            bits.append("fetch stopped early -> receiver gave up")
+        elif delivered["bytes"] == 0:
+            bits.append("NEVER FETCHED -> receiver rejected before download")
+        result["note"] = "; ".join(bits)
 
         if confirm:
             answer = input(
@@ -684,13 +826,13 @@ def main() -> int:
     print()
     print("Format spike results")
     print("=" * 78)
-    print(f"{'format':6} {'played':7} {'toPLAYING':10} {'advanced':9} {'ffprobe':22} note")
-    print("-" * 78)
+    print(f"{'format':6} {'plays':6} {'fetched':10} {'kbps':7} {'toPLAYING':10} note")
+    print("-" * 100)
     for r in results:
         ttp = f"{r['time_to_playing']:.1f}s" if r["time_to_playing"] is not None else "-"
-        adv = f"{r['position_advanced']:.1f}s" if r.get("position_advanced") is not None else "-"
-        print(f"{r['kind']:6} {('yes' if r['played'] else 'NO'):7} {ttp:10} {adv:9} "
-              f"{r['ffprobe'][:22]:22} {r['note']}")
+        mb = f"{r.get('receiver_bytes', 0) / 1e6:.2f} MB"
+        kbps = f"{r.get('receiver_kbps', 0):.0f}"
+        print(f"{r['kind']:6} {('YES' if r['played'] else 'no'):6} {mb:10} {kbps:7} {ttp:10} {r['note']}")
         for t in r["transitions"]:
             print(f"       {t}")
     print("=" * 78)
