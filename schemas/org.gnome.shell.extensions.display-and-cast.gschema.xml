@@ -1,60 +1,131 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
+  <enum id="org.gnome.shell.extensions.display-and-cast.mode">
+    <value nick="mirror" value="0"/>
+    <value nick="extend" value="1"/>
+  </enum>
+
   <schema id="org.gnome.shell.extensions.display-and-cast"
           path="/org/gnome/shell/extensions/display-and-cast/">
-    <key name="monitor-groups" type="s">
-      <default>"{}"</default>
-      <summary>Monitor group assignments</summary>
+
+    <key name="cast-mode" enum="org.gnome.shell.extensions.display-and-cast.mode">
+      <default>"mirror"</default>
+      <summary>Default cast mode</summary>
       <description>
-        JSON map of connector name to group letter (A, B, C, …)
-        used for custom multi-monitor layouts.
+        Whether a new cast mirrors an existing screen or extends the desktop
+        onto the receiver with a virtual monitor. Extend requires a desktop
+        that offers the portal's VIRTUAL source type.
       </description>
     </key>
-    <key name="presentation-mode" type="b">
+
+    <key name="cast-max-height" type="i">
+      <range min="0" max="2160"/>
+      <default>0</default>
+      <summary>Maximum encode height</summary>
+      <description>
+        Caps the streamed resolution. 0 lets the helper choose: 1080 with a
+        hardware encoder, 720 without one, because 1080p software encode
+        costs more than a full CPU core.
+      </description>
+    </key>
+
+    <key name="cast-fps" type="i">
+      <range min="10" max="60"/>
+      <default>30</default>
+      <summary>Frame rate</summary>
+      <description>Frames per second to encode. The keyframe interval
+        follows this, so a receiver joining late waits at most one second.
+      </description>
+    </key>
+
+    <key name="cast-bitrate-kbps" type="i">
+      <range min="0" max="50000"/>
+      <default>0</default>
+      <summary>Video bitrate in kbps</summary>
+      <description>
+        0 picks a default from the resolution: 6000 kbps at 1080p,
+        4000 kbps at 720p.
+      </description>
+    </key>
+
+    <key name="cast-audio" type="b">
       <default>false</default>
-      <summary>Presentation mode enabled</summary>
+      <summary>Send audio with the screen</summary>
       <description>
-        Whether presentation mode (idle inhibit + Do Not Disturb)
-        was last enabled. Restored after a Shell restart.
+        Capture the default output and mux AAC alongside the video. Requires
+        an AAC encoder; the helper reports whether one is present.
       </description>
     </key>
+
+    <key name="cast-mute-local" type="b">
+      <default>false</default>
+      <summary>Mute this computer while casting</summary>
+      <description>
+        Mute the local output for the duration of the cast so sound only
+        comes from the receiver, then restore it.
+      </description>
+    </key>
+
+    <key name="cast-audio-delay-ms" type="i">
+      <range min="-2000" max="2000"/>
+      <default>0</default>
+      <summary>Audio delay in milliseconds</summary>
+      <description>
+        Manual A/V offset, for receivers that buffer audio and video
+        differently. Positive values delay the audio.
+      </description>
+    </key>
+
+    <key name="cast-port-min" type="i">
+      <range min="1024" max="65535"/>
+      <default>8765</default>
+      <summary>First stream port</summary>
+      <description>
+        Lowest TCP port the stream server may bind. A fixed range is what
+        makes a firewall rule possible.
+      </description>
+    </key>
+
+    <key name="cast-port-max" type="i">
+      <range min="1024" max="65535"/>
+      <default>8775</default>
+      <summary>Last stream port</summary>
+      <description>Highest TCP port the stream server may bind.</description>
+    </key>
+
     <key name="cast-auto-presentation" type="b">
       <default>true</default>
       <summary>Enable presentation mode while casting</summary>
       <description>
-        When true, starting a cast session enables presentation mode.
-        Stopping cast restores the previous presentation state if the
-        user had not enabled presentation manually.
+        While a cast is running, inhibit idle and blanking and hide
+        notification banners. Derived from the helper's state, so it turns
+        itself off when the cast stops.
       </description>
     </key>
-    <key name="last-cast-device" type="s">
-      <default>""</default>
-      <summary>Last cast device id</summary>
-      <description>
-        Identifier of the last Chromecast device used for mirroring.
-      </description>
-    </key>
-    <key name="cast-source" type="s">
-      <default>"primary"</default>
-      <summary>Cast capture source</summary>
-      <description>
-        Which screen to capture when mirroring: "primary" or "all".
-      </description>
-    </key>
-    <key name="cast-display-enabled" type="b">
+
+    <key name="cast-show-speakers" type="b">
       <default>false</default>
-      <summary>Cast Display feature enabled</summary>
+      <summary>Show audio-only targets</summary>
       <description>
-        Whether the Cast Display Quick Settings tile is turned on
-        (discovery ready). Turning off stops any active cast session.
+        List speakers and speaker groups in the device menu. They cannot
+        show a screen, so they are hidden by default.
       </description>
     </key>
-    <key name="cast-device-groups" type="s">
+
+    <key name="open-cast-menu" type="as">
+      <default><![CDATA[['<Super>k']]]></default>
+      <summary>Open the Cast Display menu</summary>
+      <description>Keyboard shortcut that opens Quick Settings at the Cast
+        Display menu.
+      </description>
+    </key>
+
+    <key name="monitor-groups" type="s">
       <default>"{}"</default>
-      <summary>Cast device group assignments</summary>
+      <summary>Monitor group assignments</summary>
       <description>
-        JSON map of cast device id to group letter (A, B, C, …)
-        used when managing multiple connected devices.
+        JSON map of connector name to group letter (A, B, C, …) used for
+        custom multi-monitor layouts.
       </description>
     </key>
   </schema>

@@ -1,0 +1,29 @@
+libmutter-Message: 23:27:29.268: Running GNOME Shell (using mutter 50.1) as a Wayland display server
+
+(gnome-shell:281728): libmutter-WARNING **: 23:27:29.277: Unknown experimental feature 'scale-monitor-framebuffer'
+
+(gnome-shell:281728): libmutter-WARNING **: 23:27:29.277: Unknown experimental feature 'xwayland-native-scaling'
+libmutter-Message: 23:27:29.563: Added device '/dev/dri/renderD128' (i915) using no mode setting.
+libmutter-Message: 23:27:29.573: Created gbm renderer for '/dev/dri/renderD128'
+libmutter-Message: 23:27:29.573: Boot VGA GPU /dev/dri/renderD128 selected as primary
+** Message: 23:27:29.579: Obtained a high priority EGL context
+libmutter-Message: 23:27:29.640: Added virtual monitor Meta-0
+
+(gnome-shell:281728): libmutter-WARNING **: 23:27:29.658: WL: unable to lock lockfile /run/user/1000/wayland-0.lock, maybe another compositor is running
+
+libmutter-Message: 23:27:29.658: Using Wayland display name 'wayland-1'
+GNOME Shell-Message: 23:27:31.367: Unset XDG_SESSION_ID, getCurrentSessionProxy() called outside a user session. Asking logind directly.
+GNOME Shell-Message: 23:27:31.942: Registering session with GDM
+GNOME Shell-Message: 23:27:32.625: Will monitor session 2
+GNOME Shell-Message: 23:27:32.641: Error looking up permission: GDBus.Error:org.freedesktop.portal.Error.NotFound: No entry for geolocation
+GNOME Shell-Message: 23:27:33.317: Failed to register AuthenticationAgent
+
+(gnome-shell:281728): Gjs-WARNING **: 23:27:33.928: Type GITypeInfo of property NM.Object::client does not match return type GITypeInfo of getter get_client. Falling back to slow path
+GNOME Shell-Message: 23:27:34.810: GNOME Shell started at Sat Oct 31 2026 23:27:31 GMT+0300 (East Africa Time)
+GNOME Shell-Message: 23:27:34.812: Registering display with GDM
+
+(gnome-shell:281728): GNOME Shell-WARNING **: 23:27:46.646: [display-and-cast] Keeping the screen awake is unavailable; presentation mode will only hide notifications: Gio.DBusError: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.gnome.SessionManager was not provided by any .service files
+
+(gnome-shell:281728): GNOME Shell-WARNING **: 23:28:04.656: [display-and-cast] Keeping the screen awake is unavailable; presentation mode will only hide notifications: Gio.DBusError: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.gnome.SessionManager was not provided by any .service files
+** Message: 23:28:12.564: Shutting down GNOME Shell
+libmutter-Message: 23:28:13.225: Removed virtual monitor Meta-0
