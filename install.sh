@@ -46,10 +46,14 @@ install_helper() {
   mkdir -p "$INSTALL_DIR" "$UNIT_DIR" "$DBUS_DIR"
 
   need_pkgs=()
-  for pkg in python3-venv python3-gi python3-dbus ffmpeg \
+  # gstreamer1.0-plugins-bad provides h264parse, mpegtsmux and the VA
+  # encoders; without it the pipeline cannot be built at all (defect F5).
+  # python3-dbus is gone: the helper uses Gio's GDBus only.
+  for pkg in python3-venv python3-gi ffmpeg \
              gir1.2-gstreamer-1.0 gstreamer1.0-tools \
              gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-             gstreamer1.0-plugins-ugly gstreamer1.0-pipewire; do
+             gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
+             gstreamer1.0-libav gstreamer1.0-pipewire; do
     if ! dpkg -s "$pkg" >/dev/null 2>&1; then
       need_pkgs+=("$pkg")
     fi
@@ -74,9 +78,10 @@ install_helper() {
     echo "==> Optional (HW H.264): sudo apt-get install -y gstreamer1.0-vaapi"
   fi
 
-  cp -f "$HELPER_SRC/cast_helper.py" "$INSTALL_DIR/cast_helper.py"
+  rm -rf "$INSTALL_DIR/cast_helper"
+  cp -a "$HELPER_SRC/cast_helper" "$INSTALL_DIR/cast_helper"
+  find "$INSTALL_DIR/cast_helper" -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true
   cp -f "$HELPER_SRC/requirements.txt" "$INSTALL_DIR/requirements.txt"
-  chmod +x "$INSTALL_DIR/cast_helper.py"
 
   if [[ ! -d "$INSTALL_DIR/venv" ]]; then
     python3 -m venv --system-site-packages "$INSTALL_DIR/venv"
@@ -88,8 +93,7 @@ install_helper() {
   deactivate
 
   PYTHON="$INSTALL_DIR/venv/bin/python"
-  SCRIPT="$INSTALL_DIR/cast_helper.py"
-  sed -e "s|@PYTHON@|$PYTHON|g" -e "s|@SCRIPT@|$SCRIPT|g" \
+  sed -e "s|@PYTHON@|$PYTHON|g" -e "s|@INSTALL_DIR@|$INSTALL_DIR|g" \
     "$HELPER_SRC/cast-helper.service" > "$UNIT_DIR/cast-helper.service"
 
   cat > "$DBUS_DIR/org.cast.tools.Cast1.service" <<EOF
@@ -143,5 +147,10 @@ echo "Install complete."
 echo "  On Wayland: log out and log back in so Quick Settings reloads."
 echo "  Then open Quick Settings → Cast Display → Connect."
 echo "  Helper logs: journalctl --user -u cast-helper.service -f"
-echo "  Test devices: gdbus call --session -d org.cast.tools.Cast1 \\"
-echo "    -o /org/cast/tools/Cast1 -m org.cast.tools.Cast1.ListDevices"
+echo "  List devices: gdbus call --session -d org.cast.tools.Cast1 \\"
+echo "    -o /org/cast/tools/Cast1 \\"
+echo "    -m org.freedesktop.DBus.Properties.Get org.cast.tools.Cast1 Devices"
+echo
+echo "==> Diagnostics"
+(cd "$INSTALL_DIR" && PYTHONPATH="$INSTALL_DIR" \
+  "$INSTALL_DIR/venv/bin/python" -m cast_helper --doctor --no-discovery 2>&1 | tail -n 3) || true

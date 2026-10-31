@@ -1,14 +1,29 @@
 [Unit]
-Description=Cast Display helper (Chromecast + Miracast bridge)
+Description=Cast Display helper (Chromecast bridge + Miracast hand-off)
+# Bound to the graphical session: the helper needs the ScreenCast portal and
+# PipeWire, neither of which exists before the session is up. The old unit
+# was WantedBy=default.target with no ordering, so it could start first and
+# fail (gap G8).
 PartOf=graphical-session.target
+After=graphical-session.target
 
 [Service]
 Type=dbus
 BusName=org.cast.tools.Cast1
-ExecStart=@PYTHON@ @SCRIPT@
+ExecStart=@PYTHON@ -m cast_helper
+WorkingDirectory=@INSTALL_DIR@
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=@INSTALL_DIR@
 Restart=on-failure
 RestartSec=2
-Environment=PYTHONUNBUFFERED=1
+
+# Hardening that does not break the portal, PipeWire or mDNS.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+MemoryDenyWriteExecute=no
 
 [Install]
-WantedBy=default.target
+WantedBy=graphical-session.target

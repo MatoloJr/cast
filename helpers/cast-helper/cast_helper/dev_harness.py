@@ -1,7 +1,7 @@
 """Development harness: run the helper with no screen, no portal and no TV.
 
-Everything here is opt-in through environment variables and is inert in a
-normal install. Two switches:
+Everything here is opt-in through environment variables and inert in a normal
+install. Two switches:
 
 ``CAST_HELPER_TEST_SOURCE=1``
     Replace the ScreenCast portal + PipeWire capture with ``videotestsrc``
@@ -9,10 +9,10 @@ normal install. Two switches:
     headless and in CI.
 
 ``CAST_HELPER_FAKE_DEVICES=N``
-    Add N fake receivers to the device list. "Playing" on a fake receiver runs
-    ``ffprobe`` against the stream URL and succeeds only if ffprobe decodes a
-    video stream — i.e. the fake receiver is a real client that checks the
-    bytes we serve are playable.
+    Add N fake receivers. "Playing" on a fake receiver runs ``ffprobe``
+    against the stream URL and succeeds only if ffprobe decodes a video
+    stream — so a fake receiver is a real client that checks the bytes we
+    serve are playable, not a stub that always says yes.
 """
 
 from __future__ import annotations
@@ -61,38 +61,43 @@ def is_fake_device(device_id: str) -> bool:
     return str(device_id).startswith(FAKE_PREFIX)
 
 
-def fake_device_entries() -> list[tuple[str, str, str, str, bool]]:
-    """Entries shaped like ChromecastController.list_entries()."""
+def fake_devices() -> list[Any]:
+    """Fake devices as discovery.Device, imported lazily to avoid a cycle."""
+    count = fake_device_count()
+    if not count:
+        return []
+    from .discovery import PROTOCOL_CHROMECAST, Device
+
     return [
-        (
-            fake_device_id(i),
-            f"Fake Receiver {i + 1}",
-            "ffprobe harness",
-            "chromecast",
-            True,
+        Device(
+            id=fake_device_id(i),
+            name=f"Fake Receiver {i + 1}",
+            model="ffprobe harness",
+            manufacturer="cast-display dev",
+            protocol=PROTOCOL_CHROMECAST,
+            cast_type="cast",
+            host="127.0.0.1",
+            port=8009,
+            video_capable=True,
         )
-        for i in range(fake_device_count())
+        for i in range(count)
     ]
 
 
-def gst_source_args(pw_fd: int, node_id: int) -> list[str]:
-    """gst-launch argv for the capture source, test or real."""
-    if test_source_enabled():
-        return [
-            "videotestsrc",
-            "is-live=true",
-            "pattern=ball",
-            "!",
-            "video/x-raw,width=1280,height=720,framerate=30/1",
-        ]
-    return ["pipewiresrc", f"fd={pw_fd}", f"path={node_id}", "do-timestamp=true"]
-
-
-def gst_source_desc(pw_fd: int, node_id: int) -> str:
+def source_description(fd: int, node_id: int, audio: bool = False) -> str:
     """parse_launch fragment for the capture source, test or real."""
     if test_source_enabled():
         return TEST_VIDEO_DESC
-    return f"pipewiresrc fd={pw_fd} path={node_id} do-timestamp=true"
+    return (
+        f"pipewiresrc fd={fd} path={node_id} do-timestamp=true "
+        f"keepalive-time=1000 always-copy=false"
+    )
+
+
+def audio_source_description() -> str:
+    if test_source_enabled():
+        return TEST_AUDIO_DESC
+    return ""
 
 
 def probe_url(url: str, seconds: int = 5, timeout: float = 25.0) -> tuple[bool, str]:
@@ -101,14 +106,10 @@ def probe_url(url: str, seconds: int = 5, timeout: float = 25.0) -> tuple[bool, 
     Returns (ok, detail). ok is True only when a video stream decodes.
     """
     cmd = [
-        "ffprobe",
-        "-v",
-        "error",
-        "-print_format",
-        "json",
+        "ffprobe", "-v", "error",
+        "-print_format", "json",
         "-show_streams",
-        "-read_intervals",
-        f"%+{seconds}",
+        "-read_intervals", f"%+{seconds}",
         url,
     ]
     LOG.info("fake receiver probing %s", url)
@@ -122,7 +123,8 @@ def probe_url(url: str, seconds: int = 5, timeout: float = 25.0) -> tuple[bool, 
         return False, f"ffprobe timed out after {timeout:g}s (no decodable data)"
 
     if proc.returncode != 0:
-        return False, (proc.stderr or "").strip().splitlines()[-1:][0] if proc.stderr else "ffprobe failed"
+        tail = (proc.stderr or "").strip().splitlines()
+        return False, tail[-1] if tail else "ffprobe failed"
 
     try:
         streams = json.loads(proc.stdout or "{}").get("streams", [])
@@ -133,35 +135,14 @@ def probe_url(url: str, seconds: int = 5, timeout: float = 25.0) -> tuple[bool, 
     audio = [s for s in streams if s.get("codec_type") == "audio"]
     if not video:
         return False, f"no video stream (found {len(streams)} stream(s))"
-    v = video[0]
+    first = video[0]
     detail = (
-        f"{v.get('codec_name')} {v.get('width')}x{v.get('height')}"
-        f" {v.get('avg_frame_rate') or v.get('r_frame_rate')}"
+        f"{first.get('codec_name')} {first.get('width')}x{first.get('height')}"
+        f" {first.get('avg_frame_rate') or first.get('r_frame_rate')}"
     )
     if audio:
         detail += f" + {audio[0].get('codec_name')}"
     return True, detail
-
-
-class FakeReceiver:
-    """Stands in for a Chromecast: validates the stream instead of showing it."""
-
-    def __init__(self, device_id: str, name: str):
-        self.device_id = device_id
-        self.name = name
-        self.playing = False
-        self.detail = ""
-
-    def play(self, url: str) -> None:
-        ok, detail = probe_url(url)
-        self.detail = detail
-        if not ok:
-            raise RuntimeError(f"{self.name}: stream not playable — {detail}")
-        self.playing = True
-        LOG.info("%s accepted stream: %s", self.name, detail)
-
-    def stop(self) -> None:
-        self.playing = False
 
 
 def describe() -> Optional[str]:
@@ -176,7 +157,7 @@ def describe() -> Optional[str]:
     return "DEV HARNESS ACTIVE: " + ", ".join(bits)
 
 
-def log_banner(log: Any) -> None:
+def log_banner(log: logging.Logger) -> None:
     message = describe()
     if message:
         log.warning("%s", message)

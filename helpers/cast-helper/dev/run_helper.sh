@@ -26,6 +26,7 @@ while [[ $# -gt 0 ]]; do
     --fake)       export CAST_HELPER_FAKE_DEVICES="${2:?--fake needs a count}"; shift ;;
     --no-restore) RESTORE=0 ;;
     --doctor)     DOCTOR=1; ARGS+=("--doctor") ;;
+    --fake-portal-hangs) ARGS+=("--fake-portal-hangs") ;;
     *)            ARGS+=("$1") ;;
   esac
   shift
@@ -37,8 +38,10 @@ if [[ ! -x "$PYTHON" ]]; then
   PYTHON="$(command -v python3)"
 fi
 
+export PYTHONPATH="$HELPER_DIR${PYTHONPATH:+:$PYTHONPATH}"
+
 if [[ "$DOCTOR" -eq 1 ]]; then
-  exec "$PYTHON" "$HELPER_DIR/cast_helper.py" "${ARGS[@]}"
+  exec "$PYTHON" -m cast_helper "${ARGS[@]}"
 fi
 
 WAS_ACTIVE=0
@@ -60,4 +63,4 @@ trap cleanup EXIT
 echo "==> Running helper from $HELPER_DIR (log=$CAST_HELPER_LOG)"
 [[ -n "${CAST_HELPER_TEST_SOURCE:-}" ]] && echo "    test source: on"
 [[ -n "${CAST_HELPER_FAKE_DEVICES:-}" ]] && echo "    fake receivers: $CAST_HELPER_FAKE_DEVICES"
-exec "$PYTHON" "$HELPER_DIR/cast_helper.py" "${ARGS[@]}"
+exec "$PYTHON" -m cast_helper "${ARGS[@]}"
