@@ -1,107 +1,182 @@
 # Format spike — which stream format does a Chromecast actually play?
 
-Phase 0 deliverable. Run with
-[`helpers/cast-helper/dev/spike_formats.py`](../helpers/cast-helper/dev/spike_formats.py).
+Phase 0 deliverable. Tools:
+[`dev/spike_formats.py`](../helpers/cast-helper/dev/spike_formats.py) (serves
+candidates to a receiver) and
+[`dev/diag_receiver.py`](../helpers/cast-helper/dev/diag_receiver.py) (isolates
+*why* a receiver refuses one).
 
-The spike serves one synthetic 720p30 H.264 source (`videotestsrc pattern=ball`,
-x264enc, 1 s keyframes) in three candidate containers and asks a real receiver
-to play each one, recording the Cast media-status transitions.
+Hardware: **"Smart TV"** (mDNS model `Smart TV`, 192.168.100.13:8009), over
+Wi-Fi from Ubuntu 26.04.1 / GNOME 50.1, x264enc (no VA-API on this machine).
+Date: 2026-10-31.
+
+> ## Correction
+>
+> An earlier revision of this document concluded "fMP4 works, 24.6 s of
+> playback in 25 s". **That was wrong.** It trusted the receiver's own
+> `MEDIA_STATUS`, which reported `PLAYING` with an advancing `current_time`
+> while the TV displayed nothing. Byte accounting later showed the receiver
+> **never opened a single TCP connection** for that run: the "playback
+> position" was a stale status from a previous session. The conclusion below
+> replaces it.
 
 ## How a result is judged
 
-`player_state == PLAYING` on its own is **not** evidence of a picture: a
-receiver can sit in PLAYING with a black screen. The spike therefore also polls
-`current_time`. A candidate counts as played only when the receiver reaches
-PLAYING **and** the playback position advances in real time, which can only
-happen if the decoder is consuming our frames. Eye confirmation is still
-prompted for interactively (omit `--no-confirm`).
+Three oracles, in increasing order of trustworthiness:
+
+1. **`player_state == PLAYING`** — worthless on its own. Observed reporting
+   PLAYING for a stream the receiver never fetched.
+2. **`current_time` advancing** — also forgeable. Advanced 24.6 s for a
+   stream that was never downloaded.
+3. **Bytes the receiver actually pulled from our HTTP server**, sustained
+   over the run. A receiver cannot decode what it never downloaded. This is
+   the oracle the tools now use, and the only one that caught the error above.
+
+Eye confirmation is still prompted interactively (omit `--no-confirm`), and
+remains the final word.
 
 ## Results
 
-Hardware: **"Smart TV"** (mDNS model `Smart TV`, 192.168.100.13:8009, Google
-Cast Default Media Receiver), over Wi-Fi from Ubuntu 26.04 / GNOME 50.1.
-Date: 2026-10-31. Source machine had no VA-API encoder, so x264enc was used.
+| # | Format | MIME | Receiver fetched | Verdict |
+| --- | --- | --- | --- | --- |
+| A | fragmented MP4, progressive | `video/mp4` | **0 bytes, 0 connections** | rejected before download |
+| B | HLS live, 1 s TS segments | `application/x-mpegURL` | 0 bytes | IDLE / `ERROR` |
+| B′ | same, alternate MIME | `application/vnd.apple.mpegurl` | 0 bytes | IDLE / `ERROR` |
+| C | raw MPEG-TS, progressive | `video/mp2t` | 0 bytes | IDLE after 4.3 s — **what ships today** |
+| D | **Matroska, progressive** | `video/x-matroska` | *needs-hardware* | **decodes locally; GND ships this** |
 
-| # | Format | MIME | Played? | To PLAYING | Position advanced | Verdict |
-|---|--------|------|---------|-----------|-------------------|---------|
-| A | fragmented MP4, progressive HTTP | `video/mp4` | **yes** | 0.1 s | **24.6 s in 25 s** | **works, real time** |
-| B | HLS live, 1 s TS segments | `application/x-mpegURL` | no | — | 0.0 s | IDLE, `idle_reason=ERROR` after 0.3–4.5 s |
-| B′ | same, alternate MIME | `application/vnd.apple.mpegurl` | no | — | 0.0 s | IDLE, `idle_reason=ERROR` after 4.5 s |
-| C | raw MPEG-TS, progressive HTTP | `video/mp2t` | no | — | 0.0 s | IDLE after 4.3 s — **this is what ships today** |
+All candidates decode correctly in local `ffprobe`, so none of these failures
+are broken bytes.
 
-All three candidates decoded correctly in `ffprobe` from localhost
-(`h264, 1280x720`), so the failures are receiver-side rejections of the
-container/delivery combination, not broken bytes.
+### The network path is fine — proved separately
 
-### A — fragmented MP4 (the winner)
+`diag_receiver.py --probe static` serves a short, complete, faststart
+H.264+AAC MP4 with `Content-Length` and `Range` support from this machine:
 
-`ftyp`+`moov` cached as an init segment, then each `moof`+`mdat` pair emitted as
-a fragment, produced by piping the MPEG-TS from GStreamer through
-
-```
-ffmpeg -fflags +genpts -f mpegts -i pipe:0 -c copy \
-       -f mp4 -movflags frag_keyframe+empty_moov+default_base_moof \
-       -frag_duration 500000 pipe:1
+```text
+static  playing=yes hits=1 bytes=1.23 MB  receiver reached THIS machine and pulled 1.23 MB
+        0.2s PLAYING ... 10.0s PLAYING pos=8.503458 ... 11.5s IDLE (FINISHED)
 ```
 
-Reached PLAYING in 0.1 s and tracked wall-clock 1:1 for the whole run. This is
-the format Phase 2 builds on.
+So: **no AP client isolation, no firewall block, and the receiver's media
+player works.** (`ufw` is `ENABLED=no` on this machine.) Every failure above
+is the receiver refusing the *delivery format*, not a connectivity problem.
+This also rules out S9's firewall theory as the cause here.
 
-### B — HLS: rejected by this receiver
+A `--probe public` run against a public HTTPS sample failed on this TV, so it
+likely has no working internet route; irrelevant to the local-streaming case.
 
-Eliminated as confounders before recording the failure:
+### Why fMP4, HLS and TS all fail, and what works
 
-- playlist shape — the receiver was served a complete 4-segment window:
-  ```
-  #EXTM3U
-  #EXT-X-VERSION:6
-  #EXT-X-TARGETDURATION:1
-  #EXT-X-MEDIA-SEQUENCE:1
-  #EXT-X-INDEPENDENT-SEGMENTS
-  #EXTINF:1.000000,
-  index1.ts
-  ... (4 segments)
-  ```
-- segment availability — waited for ≥4 segments on disk before loading;
-- CORS — `Access-Control-Allow-Origin: *` on both playlist and segments;
-- MIME type — tried both `application/x-mpegURL` and
-  `application/vnd.apple.mpegurl`.
+The decisive evidence is not from our own experiments but from
+**GNOME Network Displays 0.99**, which streams to Chromecast successfully and
+which the brief nominates as the reference implementation. Its shipping recipe
+(`src/cc/cc-media-factory.{c,h}`, `src/cc/cc-http-server.c`,
+`src/cc/cc-ctrl.c`):
 
-It still went straight to IDLE with `idle_reason=ERROR`. **The cause has not
-been isolated to a single variable** and may be specific to this receiver's
-firmware. Honest conclusion: HLS is *not* a verified fallback. See "Decision".
+| Choice | GND's value |
+| --- | --- |
+| Container | **`matroskamux streamable=true`** — `video/x-matroska` |
+| Video | H.264, **`profile=high`**, **`stream-format=avc`** (not byte-stream) |
+| Audio | Opus, or AAC (`fdkaacenc`/`avenc_aac`/`faac`), or none |
+| `streamType` | `"LIVE"` |
+| URL | `http://<ip>:<port>/` |
+| Transfer | `SOUP_ENCODING_EOF` — no `Content-Length`, close-delimited |
+| Fan-out | **`multisocketsink`**, `sync-method=latest-keyframe`, `recover-policy=most-recent-keyframe`, `burst-format=buffers` |
 
-### C — raw MPEG-TS: confirms defect F2
+And, decisively, **every MP4 profile in GND's table is commented out**, with
+the source comments:
 
-The current shipping code sends exactly this (`cast_helper.py:903`,
-`content_type="video/mp2t"`). The receiver goes IDLE after ~4 s. **F2 is
-confirmed as the root cause of "TV connects, then nothing".** It is not a
-network, encoder or firewall problem.
+```c
+/* TODO: investigate black screen with vp8 (audio works)
+         investigate mp4 */
+...
+  {PROFILE_HIGH_H264, ELEMENT_VAH264, ELEMENT_OPUS, ELEMENT_MATROSKA},
+//{PROFILE_HIGH_H264, ELEMENT_VAH264, ELEMENT_OPUS, ELEMENT_MP4},
+```
+
+An independent project hit the same wall with MP4 on Chromecast and shipped
+Matroska instead. That matches our measurement exactly: MP4 (fragmented or
+not) is rejected; MPEG-TS is rejected; HLS is rejected.
+
+Note also that `streamType: LIVE` is **not** the problem — GND uses it too.
+
+### Matroska has a delivery requirement MPEG-TS does not
+
+Serving Matroska from "now", the way the current `LiveMpegTsServer` does,
+produces `Invalid data found when processing input`:
+
+```text
+$ ./spike_formats.py --local --only mkv     # serving from current position
+local ffprobe: http://127.0.0.1:40145/stream.mkv: Invalid data found when processing input
+```
+
+Matroska's EBML header and `Tracks` element occur **exactly once**, at the head
+of the stream. MPEG-TS re-sends PAT/PMT and is self-synchronising, so a late
+joiner eventually recovers; a Matroska late joiner never can. With the header
+replayed to each client, all three variants decode:
+
+```text
+mkv        YES   h264,1280,720
+mkv-audio  YES   h264,1280,720 + aac
+webm-h264  YES   h264,1280,720
+```
+
+**This is why `multisocketsink` is the right fan-out mechanism**, not a
+hand-rolled per-client deque: it caches the `streamheader` from the caps and
+sends it to every new client before bursting from the most recent keyframe.
+It solves F3 (per-client completeness), F4 (keyframe-aligned joins) and the
+Matroska header problem in one element, and it is what the working reference
+uses.
 
 ## Decision
 
-**fMP4 is the primary and, on the evidence, the only verified format.**
+**Matroska (`video/x-matroska`) is the primary and only enabled format**, with
+H.264 high profile in `avc` stream-format, muxed by `matroskamux
+streamable=true`, fanned out by `multisocketsink`.
 
-Phase 2 therefore:
+This **overrides the brief's default** of "fMP4 primary, HLS as fallback",
+which it explicitly made conditional on the spike ("unless the spike says
+otherwise"). The spike says otherwise:
 
-- implements fMP4 as the default and the only path enabled out of the box;
-- keeps HLS behind a pref, clearly labelled as unverified, because the spike
-  could not make it work on the one receiver available. It is not presented to
-  the user as a working fallback until some receiver is shown to play it;
-- **removes** the raw-TS path rather than keeping it as a fallback: it is
-  measured not to work.
+- **fMP4 is removed**, not demoted. It was measured to be rejected without
+  even a download attempt, and the reference implementation disabled it too.
+- **Raw MPEG-TS is removed.** Measured not to work. This is defect F2.
+- **HLS stays implemented but off and labelled unverified.** It failed here
+  with a correct 4-segment playlist, CORS and both standard MIME types. It is
+  kept only because it is the plausible path for receivers that reject
+  Matroska, and it is not offered as a working fallback until some receiver is
+  shown to play it.
 
-## Re-running the spike on other hardware
+Phase 2 is built on the Matroska recipe accordingly.
+
+## Still needs hardware
+
+The one open item. The TV became occupied (`app='YouTube'`, in use by someone)
+before Matroska could be tested on it, and I stopped rather than interrupt.
 
 ```bash
 cd helpers/cast-helper/dev
-./spike_formats.py --list                       # see what is on the LAN
-./spike_formats.py --local                      # no TV: serve + ffprobe locally
-./spike_formats.py --device "Living Room TV"    # interactive, confirms by eye
-./spike_formats.py --device "Living Room TV" --no-confirm --json out.json
-./spike_formats.py --device "..." --only hls --content-type application/vnd.apple.mpegurl
+./spike_formats.py --device "Smart TV" --only mkv --only mkv-audio --duration 30
 ```
 
-Please append results for any additional receiver to the table above —
-especially any receiver that **does** play HLS, which would turn the fallback
-from unverified into real.
+Expect, for a pass: `plays=YES`, several MB fetched at roughly the encode
+bitrate, and a bouncing ball visible on the TV. The script prompts for eye
+confirmation; answer honestly, because the receiver's own status cannot be
+trusted (see the correction above).
+
+If Matroska also fails on this receiver, the next candidates in order are:
+WebM with VP8 (`vp8enc`, GND's other shipping profile), then Matroska with
+Opus audio instead of AAC.
+
+## Re-running on other hardware
+
+```bash
+./spike_formats.py --list
+./spike_formats.py --local                       # no TV: serve + ffprobe
+./spike_formats.py --device "..." --only mkv     # interactive, confirms by eye
+./diag_receiver.py --device "..." --probe static # is the network path OK?
+```
+
+Please append results for any additional receiver, especially any that plays
+HLS or MP4 — either would turn an "unverified" row into a real one.

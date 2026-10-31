@@ -105,16 +105,27 @@ def audio_encoder_chain() -> str:
 
 
 class TsSource:
-    """videotestsrc (+ optional audiotestsrc) → H.264/AAC → MPEG-TS on stdout."""
+    """videotestsrc (+ optional audiotestsrc) → H.264/AAC → container on stdout.
 
-    def __init__(self, audio: bool = False, profile: str = "") -> None:
+    `container` is "mpegts" (for the ffmpeg-remux candidates) or "matroska"
+    (the container GNOME Network Displays actually ships for Chromecast).
+    Matroska wants stream-format=avc, MPEG-TS wants byte-stream.
+    """
+
+    def __init__(self, audio: bool = False, container: str = "mpegts") -> None:
         enc = encoder_chain()
-        caps = f" ! video/x-h264,profile={profile}" if profile else ""
+        if container == "matroska":
+            # GND's recipe: avc stream-format, high profile, streamable mux.
+            stream_format = "avc"
+            mux = "matroskamux name=mux streamable=true"
+        else:
+            stream_format = "byte-stream"
+            mux = "mpegtsmux name=mux"
         desc = (
             f"{TEST_SRC} ! videoconvert ! "
-            f"{enc}{caps} ! h264parse config-interval=-1 ! "
-            f"video/x-h264,stream-format=byte-stream,alignment=au ! "
-            f"mpegtsmux name=mux ! fdsink fd=1"
+            f"{enc} ! h264parse config-interval=-1 ! "
+            f"video/x-h264,stream-format={stream_format},alignment=au ! "
+            f"{mux} ! fdsink fd=1"
         )
         if audio:
             aenc = audio_encoder_chain()
@@ -386,7 +397,10 @@ def serve_fmp4(packager: Fmp4Packager, port: int, stats: Stats):
     return httpd
 
 
-def serve_ts(ts_stdout: Any, port: int, stats: Stats):
+def serve_ts(ts_stdout: Any, port: int, stats: Stats,
+             content_type: str = "video/mp2t",
+             suffixes: tuple = (".ts", "/"),
+             from_start: bool = False):
     """Deliberately reproduces today's shape, but with per-client cursors.
 
     Candidate C is about whether the *container* plays, not about the shared
@@ -403,7 +417,13 @@ def serve_ts(ts_stdout: Any, port: int, stats: Stats):
                 break
             with cond:
                 chunks.append(data)
-                if len(chunks) > 512:
+                # Matroska's EBML header and Tracks element occur exactly once,
+                # at the head of the stream, so a client that joins later cannot
+                # decode without them. MPEG-TS re-sends PAT/PMT and is
+                # self-synchronising, so it can be served from "now" and the
+                # backlog dropped. (The real StreamServer replays the
+                # streamheader per client instead of keeping everything.)
+                if not from_start and len(chunks) > 512:
                     chunks.pop(0)
                 cond.notify_all()
         with cond:
@@ -415,18 +435,18 @@ def serve_ts(ts_stdout: Any, port: int, stats: Stats):
     class Handler(_Quiet):
         def do_GET(self):  # noqa: N802
             self.note_request()
-            if not self.path.endswith((".ts", "/")):
+            if not self.path.endswith(suffixes):
                 self.send_error(404)
                 return
             self.send_response(200)
-            self.send_header("Content-Type", "video/mp2t")
+            self.send_header("Content-Type", content_type)
             self.send_header("Cache-Control", "no-cache")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Connection", "close")
             self.end_headers()
             try:
                 with cond:
-                    cursor = len(chunks)
+                    cursor = 0 if from_start else len(chunks)
                 while not state["stopped"]:
                     with cond:
                         while cursor >= len(chunks) and not state["stopped"]:
@@ -584,9 +604,23 @@ class StatusRecorder:
 
 
 CANDIDATES = {
+    # GND's shipping recipe for Chromecast, and the reason it is first here.
+    "mkv": ("Matroska progressive (GND recipe)", "video/x-matroska", "stream.mkv"),
+    "mkv-audio": ("Matroska + AAC progressive", "video/x-matroska", "stream.mkv"),
+    "webm-h264": ("WebM container, H.264", "video/webm", "stream.webm"),
     "fmp4": ("fragmented MP4 progressive", "video/mp4", "stream.mp4"),
     "hls": ("HLS live, 1 s segments", "application/x-mpegURL", "index.m3u8"),
     "ts": ("raw MPEG-TS progressive", "video/mp2t", "stream.ts"),
+}
+
+# candidate -> (container, audio)
+CANDIDATE_SOURCE = {
+    "mkv": ("matroska", False),
+    "mkv-audio": ("matroska", True),
+    "webm-h264": ("matroska", False),
+    "fmp4": ("mpegts", False),
+    "hls": ("mpegts", False),
+    "ts": ("mpegts", False),
 }
 
 
@@ -619,13 +653,21 @@ def run_candidate(kind: str, device_info, duration: float, local_only: bool,
     }
 
     stats = Stats()
-    source = TsSource()
+    container, want_audio = CANDIDATE_SOURCE[kind]
+    source = TsSource(audio=want_audio, container=container)
     httpd = None
     packager = None
     extra_proc = None
     workdir = None
     try:
-        if kind == "fmp4":
+        if kind in ("mkv", "mkv-audio", "webm-h264"):
+            # Already muxed by GStreamer: serve the bytes straight through.
+            httpd, _ = serve_ts(source.proc.stdout, port, stats,
+                                content_type=content_type,
+                                suffixes=(".mkv", ".webm", "/"),
+                                from_start=True)
+            time.sleep(2)
+        elif kind == "fmp4":
             packager = Fmp4Packager(source.proc.stdout)
             packager.start()
             if not packager.wait_ready(20):
