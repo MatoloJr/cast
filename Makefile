@@ -46,8 +46,8 @@ test-py:
 	cd $(HELPER) && $(PYTHON) -m pytest tests/ -q
 
 test-js:
-	@echo "==> node --test (layout arithmetic)"
-	node --test tests/layout.test.js
+	@echo "==> node --test (layout arithmetic, tile actions, dialog metrics)"
+	node --test tests/layout.test.js tests/dialog.test.js
 
 schema:
 	@echo "==> schema"

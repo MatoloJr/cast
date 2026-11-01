@@ -90,7 +90,7 @@ jobs:
         run: npx eslint .
 
       - name: Layout unit tests
-        run: node --test tests/layout.test.js
+        run: node --test tests/layout.test.js tests/dialog.test.js
 
       - name: Compile the GSettings schema
         run: glib-compile-schemas --strict --dry-run schemas/
