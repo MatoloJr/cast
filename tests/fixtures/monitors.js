@@ -11,7 +11,7 @@
  * Mutter reports a mode as
  * `(s id, i width, i height, d refresh, d preferred_scale, ad supported_scales, a{sv} props)`,
  * so `preferred_scale` is its own field and is not simply the first
- * supported scale — a 4K panel supports 1.0 but prefers 2.0.
+ * supported scale a 4K panel supports 1.0 but prefers 2.0.
  */
 function mode(id, width, height, refresh, scales = [1.0], flags = {}) {
     return {

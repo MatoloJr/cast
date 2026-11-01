@@ -33,7 +33,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ ! -x "$PYTHON" ]]; then
-  echo "No helper venv at $VENV — run ./install.sh --helper-only first." >&2
+  echo "No helper venv at $VENV run ./install.sh --helper-only first." >&2
   echo "Falling back to system python3 (pychromecast may be missing)." >&2
   PYTHON="$(command -v python3)"
 fi

@@ -64,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
         service_holder["service"] = service
 
     def on_name_lost(_connection, name: str) -> None:
-        LOG.error("lost the bus name %s — another helper is running?", name)
+        LOG.error("lost the bus name %s another helper is running?", name)
         loop.quit()
 
     owner_id = Gio.bus_own_name(

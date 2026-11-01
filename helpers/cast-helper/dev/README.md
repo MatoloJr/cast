@@ -31,7 +31,7 @@ ffprobe -v error -show_streams -read_intervals %+5 <url>
 ```
 
 and reports success only if ffprobe decodes a video stream. If the helper
-serves bytes a decoder cannot use, the fake receiver fails — which is the
+serves bytes a decoder cannot use, the fake receiver fails which is the
 point.
 
 ## `spike_formats.py`

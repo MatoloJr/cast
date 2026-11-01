@@ -1,6 +1,6 @@
 """The helper's state machine.
 
-One place decides what state the helper is in, and every transition is
+One place decides what state the helper is in and every transition is
 declared. Nothing else is allowed to assign to the state, which is what keeps
 the D-Bus `State` property honest: it cannot say "streaming" unless a
 `PIPELINE_READY` event actually arrived.

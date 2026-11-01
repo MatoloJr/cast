@@ -15,7 +15,7 @@ Two decisions worth stating:
 * **`multisocketsink` for fan-out.** It caches the muxer's `streamheader` and
   replays it to each new client, then bursts from the most recent keyframe.
   That fixes, in one element, the shared-deque corruption (F3), unaligned
-  late joins (F4) and Matroska's once-only EBML header — none of which a
+  late joins (F4) and Matroska's once-only EBML header none of which a
   hand-rolled per-client deque gets right.
 """
 
@@ -83,9 +83,9 @@ def select_working_encoder(force: bool = False) -> tuple[str, str, str] | None:
     """First encoder that actually encodes, as (name, kind, note).
 
     A present element is not a working element: VA-API is routinely installed
-    on machines with no usable encode device, and `vah264enc` then builds
+    on machines with no usable encode device and `vah264enc` then builds
     fine and fails at runtime. Each candidate is handed ten real frames
-    before it is trusted, and the result is cached because it cannot change
+    before it is trusted and the result is cached because it cannot change
     without a driver change.
     """
     global _verified
@@ -235,7 +235,7 @@ class Pipeline:
 
         # A cap, not a target. Ranges with a step of 2 keep dimensions even
         # for the encoder, let videoscale pass a smaller screen straight
-        # through instead of upscaling it, and preserve aspect ratio via
+        # through instead of upscaling it and preserve aspect ratio via
         # pixel-aspect-ratio plus add-borders. Verified: a 1280x720 source
         # stays 1280x720, a 2560x1440 source becomes 1920x1080.
         max_height = min(opts.max_height, 1080)
@@ -248,7 +248,7 @@ class Pipeline:
         encoder = encoder_settings(self._encoder_name, fps, opts.effective_bitrate())
 
         # Extend needs an *exact* width and height immediately after
-        # pipewiresrc, and must not mention framerate.
+        # pipewiresrc and must not mention framerate.
         #
         # A portal VIRTUAL source has no inherent size: Mutter sizes the
         # virtual monitor from whatever the consumer negotiates over
@@ -261,7 +261,7 @@ class Pipeline:
         #   width=1920,height=1080,framerate=30/1   -> negotiation FAILS
         #   width=1920,height=1080,framerate=[1,60] -> negotiation FAILS
         #
-        # So a range yields a useless 2x2 monitor, and any framerate
+        # So a range yields a useless 2x2 monitor and any framerate
         # constraint stops the pipeline from starting at all. videorate and
         # the caps further down handle the frame rate instead.
         request = ""
@@ -276,7 +276,7 @@ class Pipeline:
             # emits almost no frames, which starves the receiver and would
             # trip the stall watchdog. Measured on an idle extended desktop
             # the stream came out at 1 fps. videorate duplicates frames to
-            # hold the rate, and x264 encodes an unchanged frame very
+            # hold the rate and x264 encodes an unchanged frame very
             # cheaply.
             f"video/x-raw,format=NV12,"
             f"width=[2,{max_width},2],height=[2,{max_height},2],"
@@ -374,7 +374,7 @@ class Pipeline:
     # -- watchdog ----------------------------------------------------------
 
     def _install_watchdog(self) -> None:
-        """Count muxed buffers reaching the sink, and alarm if they stop."""
+        """Count muxed buffers reaching the sink and alarm if they stop."""
         assert self._sink is not None
         pad = self._sink.get_static_pad("sink")
         if pad is None:

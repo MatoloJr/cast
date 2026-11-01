@@ -522,7 +522,7 @@ def serve_hls(ts_stdout: Any, port: int, workdir: str, stats: Stats):
 
 
 # The Zeroconf instance must outlive discovery: pychromecast resolves a
-# device's cast_type lazily over mDNS when connecting, and raises
+# device's cast_type lazily over mDNS when connecting and raises
 # ZeroConfInstanceRequired if the instance that found it has been closed.
 # (This is defect S3 in the audit, reproduced here.)
 ZCONF: Any = None
@@ -604,7 +604,7 @@ class StatusRecorder:
 
 
 CANDIDATES = {
-    # GND's shipping recipe for Chromecast, and the reason it is first here.
+    # GND's shipping recipe for Chromecast and the reason it is first here.
     "mkv": ("Matroska progressive (GND recipe)", "video/x-matroska", "stream.mkv"),
     "mkv-audio": ("Matroska + AAC progressive", "video/x-matroska", "stream.mkv"),
     "webm-h264": ("WebM container, H.264", "video/webm", "stream.webm"),

@@ -1,6 +1,6 @@
-"""StreamServer: who gets the stream, and does every client get all of it.
+"""StreamServer: who gets the stream and does every client get all of it.
 
-These run a real server on a real socket against a real GLib main loop, and
+These run a real server on a real socket against a real GLib main loop and
 drive it with real HTTP clients, because the defects being guarded against
 (F3, F4, S9) were all in the delivery path rather than in any pure function.
 
@@ -289,7 +289,7 @@ def test_three_concurrent_clients_all_complete(server):
 
 
 def test_a_late_joiner_receives_the_stream_header(server):
-    """Defect F4, and Matroska's once-only EBML header.
+    """Defect F4 and Matroska's once-only EBML header.
 
     A client that joins mid-stream must still get the header, or it can
     never decode. Measured without this: "Invalid data found when

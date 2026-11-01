@@ -3,9 +3,9 @@
 This extension does not implement Miracast. Native Miracast means Wi-Fi
 Direct, WFD/RTSP session negotiation and HDCP, which GNOME Network Displays
 already does. So the device list carries exactly one Miracast entry, it opens
-GND, and **no session or "casting" state is ever created for it** — which is
+GND and **no session or "casting" state is ever created for it** which is
 what defect S11 got wrong: it marked the cast active the moment the GND window
-opened, and Disconnect then did nothing at all.
+opened and Disconnect then did nothing at all.
 """
 
 from __future__ import annotations

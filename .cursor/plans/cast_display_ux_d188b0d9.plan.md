@@ -1,6 +1,6 @@
 ---
 name: Cast Display UX
-overview: Redesign the Cast Display Quick Settings tile so primary click turns casting on/off, the menu chevron shows a gated device picker with multi-select and Connect branches into single-device (normal) vs multi-device (advanced) feature UIs—removing the presentation toggle while extending the helper to mirror one stream to multiple Chromecasts.
+overview: Redesign the Cast Display Quick Settings tile so primary click turns casting on/off, the menu chevron shows a gated device picker with multi-select and Connect branches into single-device (normal) vs multi-device (advanced) feature UIs removing the presentation toggle while extending the helper to mirror one stream to multiple Chromecasts.
 todos:
   - id: tile-activate
     content: Enable toggleMode + GSettings cast-display-enabled; gate menu/scan on activation

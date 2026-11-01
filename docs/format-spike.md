@@ -1,4 +1,4 @@
-# Format spike — which stream format does a Chromecast actually play?
+# Format spike which stream format does a Chromecast actually play?
 
 Phase 0 deliverable. Tools:
 [`dev/spike_formats.py`](../helpers/cast-helper/dev/spike_formats.py) (serves
@@ -24,15 +24,15 @@ Date: 2026-10-31.
 
 Three oracles, in increasing order of trustworthiness:
 
-1. **`player_state == PLAYING`** — worthless on its own. Observed reporting
+1. **`player_state == PLAYING`** worthless on its own. Observed reporting
    PLAYING for a stream the receiver never fetched.
-2. **`current_time` advancing** — also forgeable. Advanced 24.6 s for a
+2. **`current_time` advancing** also forgeable. Advanced 24.6 s for a
    stream that was never downloaded.
 3. **Bytes the receiver actually pulled from our HTTP server**, sustained
    over the run. A receiver cannot decode what it never downloaded. This is
-   the oracle the tools now use, and the only one that caught the error above.
+   the oracle the tools now use and the only one that caught the error above.
 
-Eye confirmation is still prompted interactively (omit `--no-confirm`), and
+Eye confirmation is still prompted interactively (omit `--no-confirm`) and
 remains the final word.
 
 ## Results
@@ -42,13 +42,13 @@ remains the final word.
 | A | fragmented MP4, progressive | `video/mp4` | **0 bytes, 0 connections** | rejected before download |
 | B | HLS live, 1 s TS segments | `application/x-mpegURL` | 0 bytes | IDLE / `ERROR` |
 | B′ | same, alternate MIME | `application/vnd.apple.mpegurl` | 0 bytes | IDLE / `ERROR` |
-| C | raw MPEG-TS, progressive | `video/mp2t` | 0 bytes | IDLE after 4.3 s — **what ships today** |
+| C | raw MPEG-TS, progressive | `video/mp2t` | 0 bytes | IDLE after 4.3 s **what ships today** |
 | D | **Matroska, progressive** | `video/x-matroska` | *needs-hardware* | **decodes locally; GND ships this** |
 
 All candidates decode correctly in local `ffprobe`, so none of these failures
 are broken bytes.
 
-### The network path is fine — proved separately
+### The network path is fine proved separately
 
 `diag_receiver.py --probe static` serves a short, complete, faststart
 H.264+AAC MP4 with `Content-Length` and `Range` support from this machine:
@@ -58,7 +58,7 @@ static  playing=yes hits=1 bytes=1.23 MB  receiver reached THIS machine and pull
         0.2s PLAYING ... 10.0s PLAYING pos=8.503458 ... 11.5s IDLE (FINISHED)
 ```
 
-So: **no AP client isolation, no firewall block, and the receiver's media
+So: **no AP client isolation, no firewall block and the receiver's media
 player works.** (`ufw` is `ENABLED=no` on this machine.) Every failure above
 is the receiver refusing the *delivery format*, not a connectivity problem.
 This also rules out S9's firewall theory as the cause here.
@@ -66,7 +66,7 @@ This also rules out S9's firewall theory as the cause here.
 A `--probe public` run against a public HTTPS sample failed on this TV, so it
 likely has no working internet route; irrelevant to the local-streaming case.
 
-### Why fMP4, HLS and TS all fail, and what works
+### Why fMP4, HLS and TS all fail and what works
 
 The decisive evidence is not from our own experiments but from
 **GNOME Network Displays 0.99**, which streams to Chromecast successfully and
@@ -76,12 +76,12 @@ which the brief nominates as the reference implementation. Its shipping recipe
 
 | Choice | GND's value |
 | --- | --- |
-| Container | **`matroskamux streamable=true`** — `video/x-matroska` |
+| Container | **`matroskamux streamable=true`** `video/x-matroska` |
 | Video | H.264, **`profile=high`**, **`stream-format=avc`** (not byte-stream) |
 | Audio | Opus, or AAC (`fdkaacenc`/`avenc_aac`/`faac`), or none |
 | `streamType` | `"LIVE"` |
 | URL | `http://<ip>:<port>/` |
-| Transfer | `SOUP_ENCODING_EOF` — no `Content-Length`, close-delimited |
+| Transfer | `SOUP_ENCODING_EOF` no `Content-Length`, close-delimited |
 | Fan-out | **`multisocketsink`**, `sync-method=latest-keyframe`, `recover-policy=most-recent-keyframe`, `burst-format=buffers` |
 
 And, decisively, **every MP4 profile in GND's table is commented out**, with
@@ -99,7 +99,7 @@ An independent project hit the same wall with MP4 on Chromecast and shipped
 Matroska instead. That matches our measurement exactly: MP4 (fragmented or
 not) is rejected; MPEG-TS is rejected; HLS is rejected.
 
-Note also that `streamType: LIVE` is **not** the problem — GND uses it too.
+Note also that `streamType: LIVE` is **not** the problem GND uses it too.
 
 ### Matroska has a delivery requirement MPEG-TS does not
 
@@ -126,7 +126,7 @@ webm-h264  YES   h264,1280,720
 hand-rolled per-client deque: it caches the `streamheader` from the caps and
 sends it to every new client before bursting from the most recent keyframe.
 It solves F3 (per-client completeness), F4 (keyframe-aligned joins) and the
-Matroska header problem in one element, and it is what the working reference
+Matroska header problem in one element and it is what the working reference
 uses.
 
 ## Decision
@@ -140,12 +140,12 @@ which it explicitly made conditional on the spike ("unless the spike says
 otherwise"). The spike says otherwise:
 
 - **fMP4 is removed**, not demoted. It was measured to be rejected without
-  even a download attempt, and the reference implementation disabled it too.
+  even a download attempt and the reference implementation disabled it too.
 - **Raw MPEG-TS is removed.** Measured not to work. This is defect F2.
 - **HLS stays implemented but off and labelled unverified.** It failed here
   with a correct 4-segment playlist, CORS and both standard MIME types. It is
   kept only because it is the plausible path for receivers that reject
-  Matroska, and it is not offered as a working fallback until some receiver is
+  Matroska and it is not offered as a working fallback until some receiver is
   shown to play it.
 
 Phase 2 is built on the Matroska recipe accordingly.
@@ -153,7 +153,7 @@ Phase 2 is built on the Matroska recipe accordingly.
 ## Still needs hardware
 
 The one open item. The TV became occupied (`app='YouTube'`, in use by someone)
-before Matroska could be tested on it, and I stopped rather than interrupt.
+before Matroska could be tested on it and I stopped rather than interrupt.
 
 ```bash
 cd helpers/cast-helper/dev
@@ -161,7 +161,7 @@ cd helpers/cast-helper/dev
 ```
 
 Expect, for a pass: `plays=YES`, several MB fetched at roughly the encode
-bitrate, and a bouncing ball visible on the TV. The script prompts for eye
+bitrate and a bouncing ball visible on the TV. The script prompts for eye
 confirmation; answer honestly, because the receiver's own status cannot be
 trusted (see the correction above).
 
@@ -179,4 +179,4 @@ Opus audio instead of AAC.
 ```
 
 Please append results for any additional receiver, especially any that plays
-HLS or MP4 — either would turn an "unverified" row into a real one.
+HLS or MP4 either would turn an "unverified" row into a real one.

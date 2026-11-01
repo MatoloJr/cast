@@ -2,7 +2,7 @@
 """Environment diagnostics for the Cast Display helper.
 
 Run with ``cast_helper.py --doctor``. Prints everything needed to tell whether
-this machine can capture, encode and serve a screen stream, and which Cast
+this machine can capture, encode and serve a screen stream and which Cast
 devices it can see. Exits non-zero when a hard requirement is missing.
 """
 
@@ -417,7 +417,7 @@ def run(argv: list[str] | None = None) -> int:
         discovery_seconds = 0.0
 
     report = Report()
-    report.lines.append("Cast Display — doctor")
+    report.lines.append("Cast Display doctor")
     report.lines.append("=====================")
 
     gst = _load_gst()

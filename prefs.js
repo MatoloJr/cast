@@ -124,7 +124,7 @@ export default class CastDisplayPreferences extends ExtensionPreferences {
             : _('none found');
         group.add(new Adw.ActionRow({
             title: _('Video encoder'),
-            subtitle: caps.encoder_note ? `${encoder} — ${caps.encoder_note}` : encoder,
+            subtitle: caps.encoder_note ? `${encoder} ${caps.encoder_note}` : encoder,
         }));
 
         group.add(new Adw.ActionRow({
@@ -280,7 +280,7 @@ export default class CastDisplayPreferences extends ExtensionPreferences {
         page.add(privacy);
         privacy.add(new Adw.ActionRow({
             title: _('Who can see the stream'),
-            subtitle: _('Only the displays you selected. Requests from any other address are refused, and the stream address contains a 128-bit random token.'),
+            subtitle: _('Only the displays you selected. Requests from any other address are refused and the stream address contains a 128-bit random token.'),
         }));
         return page;
     }

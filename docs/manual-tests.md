@@ -9,7 +9,7 @@ Record results inline. "Not run" is a useful answer; a guess is not.
 > **Read this first.** A Cast receiver's own status is not evidence. During
 > Phase 0 this TV reported `PLAYING` with a steadily advancing
 > `current_time` for a stream it had **never downloaded a single byte of**.
-> Judge by what you see on the screen, and when in doubt check the bytes the
+> Judge by what you see on the screen and when in doubt check the bytes the
 > receiver pulled (`dev/spike_formats.py` prints this). See
 > [format-spike.md](format-spike.md).
 
@@ -30,7 +30,7 @@ Record results inline. "Not run" is a useful answer; a guess is not.
 - [ ] Quick Settings → Cast Display → pick one TV → **Connect**
 - [ ] Approve the screen-share prompt
 - [ ] **First frame on the TV within 5 s**
-- [ ] Latency under 2 s — put a clock or stopwatch on screen and compare
+- [ ] Latency under 2 s put a clock or stopwatch on screen and compare
 
 Measured on the reference machine, localhost, no TV involved: first decodable
 frame **0.24 s** (1080p30) / **0.42 s** (720p30); lag behind live **0.13–1.20 s**
@@ -207,6 +207,6 @@ systemctl --user stop cast-helper.service
 ./dev/measure_stream.sh 1920x1080@30 1080
 ```
 
-Note: `ffprobe` is the wrong tool for measuring latency — its read-ahead
+Note: `ffprobe` is the wrong tool for measuring latency its read-ahead
 inflated the figure to 3.16 s where a GStreamer client measured 0.59 s median
 on the same stream. `dev/measure_latency.py` does it properly.

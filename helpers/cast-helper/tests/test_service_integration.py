@@ -212,7 +212,7 @@ def test_stop_all_while_the_portal_is_pending_is_the_s1_regression():
 
         elapsed, proc = helper.call("StopAll", timeout=15)
         assert proc.returncode == 0, f"StopAll failed: {proc.stderr}"
-        assert elapsed < 2.0, f"StopAll took {elapsed:.2f}s — the deadlock is back"
+        assert elapsed < 2.0, f"StopAll took {elapsed:.2f}s the deadlock is back"
         assert helper.state() == "idle"
 
         # And the helper is still alive and responsive afterwards.

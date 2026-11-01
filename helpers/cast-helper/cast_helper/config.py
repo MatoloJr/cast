@@ -101,7 +101,7 @@ class StreamOptions:
             if opts.mode == MODE_EXTEND:
                 # In extend mode this number *is* the size of the desktop the
                 # user gets on the receiver, so it stays at 1080p even on a
-                # software encoder. A 720p extended screen is cramped, and
+                # software encoder. A 720p extended screen is cramped and
                 # the cost is the user's to trade away in preferences.
                 opts.max_height = 1080
             elif not hw_encode:

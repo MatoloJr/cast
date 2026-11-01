@@ -2,16 +2,16 @@
 """Find out *why* a Cast receiver will not play our stream.
 
 The format spike answers "which container plays". This answers the question
-before it: can the receiver reach this computer at all, and does its media
+before it: can the receiver reach this computer at all and does its media
 receiver work?
 
 Three probes, in order of increasing specificity:
 
-  1. ``--probe public``  — load a well-known public sample MP4 over HTTPS.
+  1. ``--probe public``  load a well-known public sample MP4 over HTTPS.
      Isolates "is this receiver's media player working at all".
-  2. ``--probe static``  — serve a short, complete, seekable local MP4 from
+  2. ``--probe static``  serve a short, complete, seekable local MP4 from
      this machine. Isolates "can the receiver reach THIS computer".
-  3. ``--probe live``    — serve the live fragmented MP4, as the helper does.
+  3. ``--probe live``    serve the live fragmented MP4, as the helper does.
 
 Each probe reports bytes the receiver actually pulled, which is the only
 signal that cannot be faked by a stale media status.
@@ -144,7 +144,7 @@ def serve_file(path: str, port: int, content_type: str):
 
 
 def make_sample_mp4(seconds: int = 10) -> str:
-    """A small, complete, faststart MP4 — the easiest thing to play there is."""
+    """A small, complete, faststart MP4 the easiest thing to play there is."""
     out = os.path.join(tempfile.mkdtemp(prefix="cast-diag-"), "sample.mp4")
     cmd = [
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
@@ -320,7 +320,7 @@ def run_probe(cast, info, probe: str, duration: float) -> dict:
                 )
             else:
                 result["verdict"] = (
-                    "receiver NEVER connected to this machine — "
+                    "receiver NEVER connected to this machine "
                     "network path blocked (AP client isolation or firewall)"
                 )
 

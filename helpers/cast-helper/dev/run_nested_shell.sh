@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Load the extension into a throwaway GNOME Shell, with the dev helper, and
+# Load the extension into a throwaway GNOME Shell, with the dev helper and
 # report anything the Shell complains about.
 #
 #   ./run_nested_shell.sh            # headless, for CI and for a quick check
@@ -54,7 +54,7 @@ echo "==> starting a private bus, the helper and gnome-shell ($MODE)"
 cat >"$WORK/inner.sh" <<INNER
 set -euo pipefail
 
-# Private data dir first on the search path, and the system dirs after it so
+# Private data dir first on the search path and the system dirs after it so
 # the Shell still finds its own resources.
 export XDG_DATA_HOME="$PRIVATE_DATA"
 export XDG_DATA_DIRS="\${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"

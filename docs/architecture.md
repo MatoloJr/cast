@@ -1,7 +1,7 @@
 # Architecture
 
 Two processes. A GNOME Shell extension that owns the UI and the monitor
-layout, and a Python helper that owns the capture, the encode and the
+layout and a Python helper that owns the capture, the encode and the
 receivers. They speak D-Bus.
 
 ```text
@@ -46,7 +46,7 @@ is the truth.
 State is exposed as **properties**, not as methods to poll:
 `ApiVersion`, `State`, `LastError`, `Devices`, `Sessions`, `Streams`,
 `Capabilities`. Changes arrive through
-`org.freedesktop.DBus.Properties.PropertiesChanged`, and the helper compares
+`org.freedesktop.DBus.Properties.PropertiesChanged` and the helper compares
 values before emitting, so an unchanged discovery tick does not wake the UI.
 
 Methods are `Refresh`, `StartCast`, `AddDevices`, `RemoveDevice`,
@@ -57,9 +57,9 @@ receiver connections happen afterwards and report through properties.
 Measured on the reference machine: StartCast 47 ms, AddDevices 45 ms,
 StopAll 34 ms.
 
-Failures use named errors — `Error.Busy`, `Error.NotFound`,
+Failures use named errors `Error.Busy`, `Error.NotFound`,
 `Error.PortalDenied`, `Error.NoEncoder`, `Error.Network`,
-`Error.Unsupported` — so the Shell can say something specific instead of
+`Error.Unsupported` so the Shell can say something specific instead of
 echoing a stack trace.
 
 ## The rules the helper is built around
@@ -75,7 +75,7 @@ posts back with `GLib.idle_add`; only the main thread mutates state.
 
 **Stop works in every state.** Including with a portal dialog open, which
 used to deadlock the process for good (defect S1). Instead of a lock, the
-state machine carries a generation counter: `STOP` bumps it, and any async
+state machine carries a generation counter: `STOP` bumps it and any async
 callback belonging to an older generation is discarded. `tests/
 test_service_integration.py` drives this against a portal that never
 answers.
@@ -100,7 +100,7 @@ pipewiresrc (portal fd)
 Format choices are measured, not assumed; see
 [format-spike.md](format-spike.md). **Matroska**, not fragmented MP4 or
 MPEG-TS, because those were refused by the test receiver without it even
-downloading them, and because GNOME Network Displays — which works — ships
+downloading them and because GNOME Network Displays which works ships
 Matroska and has every MP4 profile commented out.
 
 **`multisocketsink` does the fan-out.** It replays the muxer's
@@ -119,7 +119,7 @@ machines with no usable encode device. A fallback is reported in
 A **watchdog** fails the stream if no encoded frame arrives for 5 s, so a
 dead capture becomes an error rather than a frozen picture under a UI still
 claiming "Playing". The output framerate is pinned so an idle screen keeps
-producing frames and does not trip it — see [phase-5-audio.md](phase-5-audio.md).
+producing frames and does not trip it see [phase-5-audio.md](phase-5-audio.md).
 
 ## Who may watch the screen
 
@@ -132,7 +132,7 @@ pipe.
 - An **IP allowlist** holds only the receivers attached to that stream. Any
   other address gets 403, *even with a valid token*. Loopback is granted
   only when the dev harness is running or a receiver genuinely is on
-  loopback — not unconditionally, which would let any local process with the
+  loopback not unconditionally, which would let any local process with the
   token read the screen.
 - The port comes from a **fixed configurable range** (8765–8775 by default),
   so a firewall rule is possible at all.
@@ -141,7 +141,7 @@ pipe.
   (defect S10). This machine has three candidates, so it is not academic.
 
 Once the response headers are written, the socket is handed to
-`multisocketsink` and GStreamer does the writing — the same arrangement
+`multisocketsink` and GStreamer does the writing the same arrangement
 GNOME Network Displays uses, except that its allowlist is `#if 0`'d out and
 this one is on.
 
@@ -153,7 +153,7 @@ nothing about the local layout changes.
 Extend asks for a `VIRTUAL` source. Mutter then creates a real monitor that
 appears in `DisplayConfig`, so Extend and "turn off this computer's screens"
 become genuine Mutter layouts that include the receiver. The exact caps this
-requires, and the 2×2 monitor you get if you get them wrong, are in
+requires and the 2×2 monitor you get if you get them wrong, are in
 [phase-4-display-modes.md](phase-4-display-modes.md).
 
 All layout arithmetic lives in `lib/layout.js`, which imports no `gi://`
@@ -164,10 +164,10 @@ temporarily and reverts after 15 s unless the user confirms.
 
 ## Miracast
 
-Not implemented, and not pretended. Native Miracast means Wi-Fi Direct,
+Not implemented and not pretended. Native Miracast means Wi-Fi Direct,
 WFD/RTSP session negotiation and HDCP; GNOME Network Displays already does
 that. The device list carries one row that opens GND, or offers to install
-it, and **no session or cast state is ever created for it** — which defect
+it and **no session or cast state is ever created for it** which defect
 S11 got wrong. `tests/test_miracast.py` keeps it that way.
 
 ## Testing
@@ -186,6 +186,6 @@ S11 got wrong. `tests/test_miracast.py` keeps it that way.
 
 The dev harness replaces the two things that need a human and a television:
 `CAST_HELPER_TEST_SOURCE=1` swaps the portal and PipeWire for
-`videotestsrc`, and `CAST_HELPER_FAKE_DEVICES=N` adds receivers that "play"
+`videotestsrc` and `CAST_HELPER_FAKE_DEVICES=N` adds receivers that "play"
 by running `ffprobe` against the stream URL and fail unless a video stream
 decodes. A fake receiver is a real client, not a stub that says yes.

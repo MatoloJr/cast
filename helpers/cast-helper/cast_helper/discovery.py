@@ -3,9 +3,9 @@
 One long-lived `CastBrowser` over one long-lived `Zeroconf`, started once.
 This replaces the old per-refresh `get_chromecasts()` (a fresh Zeroconf and a
 5 s block every 12 s, whose `stop_discovery()` then invalidated the very
-Chromecast objects it had returned — defects S3, S4).
+Chromecast objects it had returned defects S3, S4).
 
-Device identity is the mDNS UUID, and `Devices` is only published when the set
+Device identity is the mDNS UUID and `Devices` is only published when the set
 actually differs, so the UI stops rebuilding its rows every 12 s (S5).
 """
 
@@ -59,7 +59,7 @@ def classify(cast_type: str | None, port: int) -> tuple[str, bool]:
     """(cast_type, video_capable) from what mDNS actually gave us.
 
     This is a **deny-list**, deliberately. pychromecast only fills `cast_type`
-    for models in its own hardcoded table and leaves it `None` otherwise —
+    for models in its own hardcoded table and leaves it `None` otherwise  
     including for the TV used to develop this. An allow-list on "cast" would
     hide most real televisions. See docs/phase-0-baseline.md.
     """
@@ -116,7 +116,7 @@ class Discovery:
             from pychromecast.discovery import CastBrowser, SimpleCastListener
         except ImportError as exc:
             # No pychromecast: real discovery is impossible, but the dev
-            # harness and the Miracast entry must still work, and CI runs
+            # harness and the Miracast entry must still work and CI runs
             # without it.
             LOG.error("Cast discovery unavailable: %s", exc)
             self._started = True

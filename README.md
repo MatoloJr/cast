@@ -2,17 +2,17 @@
 
 Cast your screen to Chromecast and Google TV displays from GNOME's Quick
 Settings. Pick one display or several, mirror an existing screen or extend
-your desktop onto the TV, and hand off to GNOME Network Displays for
+your desktop onto the TV and hand off to GNOME Network Displays for
 Miracast.
 
 One encode is fanned out to every receiver, so a second television costs
 network bandwidth rather than another encoder.
 
 > **Status.** Everything described below has been exercised end to end on
-> Ubuntu 26.04 / GNOME Shell 50.1 with the development harness, and the
+> Ubuntu 26.04 / GNOME Shell 50.1 with the development harness and the
 > display and portal behaviour on real hardware. The items in
-> [docs/manual-tests.md](docs/manual-tests.md) marked *needs hardware* —
-> above all **a picture on a real television** — have not been confirmed
+> [docs/manual-tests.md](docs/manual-tests.md) marked *needs hardware*  
+> above all **a picture on a real television** have not been confirmed
 > yet. Nothing here is described as working on a TV that has not been seen
 > working on one; read [docs/format-spike.md](docs/format-spike.md) before
 > trusting the format choice.
@@ -40,7 +40,7 @@ and notification banners can be hidden automatically.
   type**, which `--doctor` reports.
 - An H.264 encoder GStreamer can use. VA-API (`vah264enc`) if you have it,
   otherwise `x264enc`.
-- Python 3.9+ with PyGObject, and `ffmpeg` for the diagnostics.
+- Python 3.9+ with PyGObject and `ffmpeg` for the diagnostics.
 
 ## Install
 
@@ -51,12 +51,12 @@ cd cast
 ```
 
 Then **log out and back in**. On Wayland the Shell cannot reload itself, so
-the tile will not appear until the session restarts. No reboot is needed, and
+the tile will not appear until the session restarts. No reboot is needed and
 the helper starts immediately.
 
 The installer puts the extension in
 `~/.local/share/gnome-shell/extensions/`, the helper and its virtualenv in
-`~/.local/share/cast-display/`, and a systemd user unit that starts with the
+`~/.local/share/cast-display/` and a systemd user unit that starts with the
 graphical session. It also offers to add a `ufw` rule if your firewall is
 active, printing the command either way rather than changing anything
 silently.
@@ -89,9 +89,9 @@ A sample of its output on a healthy machine is in
 
 | Symptom | What `--doctor` shows | What to do |
 | --- | --- | --- |
-| The tile never appears | — | Log out and back in; check `gnome-extensions info display-and-cast@cast.tools` |
-| "The cast helper is not running" | — | `systemctl --user status cast-helper.service`, then `journalctl --user -u cast-helper.service -f` |
-| "Helper outdated: run ./install.sh" | — | The extension was updated but the helper was not. Re-run `./install.sh` |
+| The tile never appears | | Log out and back in; check `gnome-extensions info display-and-cast@cast.tools` |
+| "The cast helper is not running" | | `systemctl --user status cast-helper.service`, then `journalctl --user -u cast-helper.service -f` |
+| "Helper outdated: run ./install.sh" | | The extension was updated but the helper was not. Re-run `./install.sh` |
 | No displays listed | `devices: none found` | mDNS is not reaching the LAN. Check that UDP 5353 is not blocked and that you are not on a guest network with client isolation |
 | The TV connects, then goes black | `encoder chosen: …` is fine | Almost certainly the receiver refusing the stream format. Run `helpers/cast-helper/dev/spike_formats.py --device "<name>"` and add the result to [docs/format-spike.md](docs/format-spike.md) |
 | "No video encoder is available" | `[FAIL] h264 encoder` | `sudo apt install gstreamer1.0-plugins-ugly gstreamer1.0-plugins-bad` |
@@ -150,17 +150,17 @@ The stream is your screen, so it is treated as such.
 
 ## Miracast is out of scope
 
-This extension does not implement Miracast, and the device list says so.
+This extension does not implement Miracast and the device list says so.
 
 Native Miracast means Wi-Fi Direct (P2P) group negotiation, a WFD/RTSP
-session, and usually HDCP. That is a wireless-stack problem rather than a
-streaming one, it needs a compatible driver and firmware, and
+session and usually HDCP. That is a wireless-stack problem rather than a
+streaming one, it needs a compatible driver and firmware and
 [GNOME Network Displays](https://gitlab.gnome.org/GNOME/gnome-network-displays)
-already does it properly — including MICE, Miracast over existing
+already does it properly including MICE, Miracast over existing
 infrastructure, from version 0.91.
 
 So the list carries exactly one Miracast row. It opens GND, or the software
-centre if GND is not installed, and **no cast session is ever created for
+centre if GND is not installed and **no cast session is ever created for
 it**: the tile does not change state and there is nothing to disconnect.
 The previous version marked the cast active the moment the GND window
 opened, which meant the UI claimed to be casting when it was not.
@@ -189,14 +189,14 @@ URL and fails unless a video stream actually decodes.
 
 Further reading:
 
-- [docs/architecture.md](docs/architecture.md) — how the two processes fit
+- [docs/architecture.md](docs/architecture.md) how the two processes fit
   together and why
-- [docs/format-spike.md](docs/format-spike.md) — which stream format a
-  Chromecast plays, and how that was established
-- [docs/phase-4-display-modes.md](docs/phase-4-display-modes.md) — the exact
+- [docs/format-spike.md](docs/format-spike.md) which stream format a
+  Chromecast plays and how that was established
+- [docs/phase-4-display-modes.md](docs/phase-4-display-modes.md) the exact
   caps that make a virtual monitor usable
-- [docs/manual-tests.md](docs/manual-tests.md) — the hardware checklist
-- [docs/phase-0-baseline.md](docs/phase-0-baseline.md) — the defects this
+- [docs/manual-tests.md](docs/manual-tests.md) the hardware checklist
+- [docs/phase-0-baseline.md](docs/phase-0-baseline.md) the defects this
   rewrite fixed, each reproduced by measurement first
 
 ## Licence

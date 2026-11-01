@@ -3,7 +3,7 @@
 The important one is `source_ip_for`: the stream URL must carry the address of
 the interface that actually reaches *that* receiver. Picking one address by
 routing to a public resolver (defect S10) gives the wrong interface whenever a
-VPN, Docker bridge or second NIC is present — and this machine has three
+VPN, Docker bridge or second NIC is present and this machine has three
 candidate interfaces.
 """
 
@@ -98,7 +98,7 @@ LOOPBACK = frozenset({"127.0.0.1", "::1"})
 
 
 def allowlist_for(hosts: Iterable[str], include_loopback: bool = False) -> set[str]:
-    """The receiver hosts attached to a stream, and nothing else.
+    """The receiver hosts attached to a stream and nothing else.
 
     Loopback is **not** granted by default. The brief allows it "for the dev
     harness", but adding it unconditionally would let any local process that

@@ -1,7 +1,7 @@
-# Phase 3 — recorded UI run
+# Phase 3 recorded UI run
 
 The brief asks for a screencast or written log of the extension driven end to
-end. This is the written log, and it is reproducible:
+end. This is the written log and it is reproducible:
 
 ```bash
 cd helpers/cast-helper
@@ -10,7 +10,7 @@ cd helpers/cast-helper
 ```
 
 The harness starts a private session bus, the dev helper (`videotestsrc` plus
-two ffprobe receivers), and a real GNOME Shell with **only** this extension
+two ffprobe receivers) and a real GNOME Shell with **only** this extension
 enabled, installed into a throwaway `XDG_DATA_HOME`. It then drives a full
 cast lifecycle over D-Bus and greps the Shell's log.
 
@@ -50,7 +50,7 @@ Checks against the exit criteria:
 | No Shell warnings from the extension | see below |
 | ESLint clean | 8 files, 0 errors, 0 warnings |
 
-## The only remaining log line, and why it is there
+## The only remaining log line and why it is there
 
 ```text
 [display-and-cast] Keeping the screen awake is unavailable;
@@ -62,12 +62,12 @@ The name org.gnome.SessionManager was not provided by any .service files
 A nested session has no `org.gnome.SessionManager`, so the idle inhibitor
 cannot be taken. It is logged **once per extension enable** (twice in the run
 above, because the test disables and re-enables the extension to simulate a
-lock), and presentation mode continues in its degraded form, hiding banners.
+lock) and presentation mode continues in its degraded form, hiding banners.
 On a real desktop the session manager exists and this line does not appear.
 
 Everything else in the Shell log is environmental: mutter's experimental
 feature warnings, the nested Wayland lockfile, a missing geolocation portal
-entry, an NM typelib mismatch, and criticals from GNOME's own
+entry, an NM typelib mismatch and criticals from GNOME's own
 `dateMenu.js:512` during shutdown. Raw log:
 [`phase-3-nested-shell-run.log`](phase-3-nested-shell-run.log).
 
@@ -87,9 +87,9 @@ entry, an NM typelib mismatch, and criticals from GNOME's own
 
 3. **A log-spamming retry loop.** Presentation mode treated "hide banners"
    and "inhibit idle" as one unit, so a failure left `_enabled` false and the
-   whole thing was retried, and logged, on every state sync — eight times in
+   whole thing was retried and logged, on every state sync eight times in
    a 40 second run. The two concerns are now independent, the failure is
-   recorded once, and concurrent `enable()` calls share one in-flight attempt
+   recorded once and concurrent `enable()` calls share one in-flight attempt
    instead of racing.
 
 4. **The harness was testing the wrong code.** The first version reused the
@@ -97,7 +97,7 @@ entry, an NM typelib mismatch, and criticals from GNOME's own
    this UUID points at a *second, stale checkout* of this repo
    (`/home/emm/projects/tools/cast`, sitting at the pre-Phase-0 baseline).
    Several runs silently exercised September's code. The harness now installs
-   into a private `XDG_DATA_HOME`, and enables only this extension so another
+   into a private `XDG_DATA_HOME` and enables only this extension so another
    installed extension's warnings cannot be misread as ours.
 
 ## Note for whoever runs this on the reference machine

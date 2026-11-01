@@ -21,7 +21,7 @@ function _warn(message, error) {
  * Per-receiver state → a short chip label the user can act on.
  *
  * Built on demand, not at module scope: from GNOME 45 `gettext` may only be
- * called while an extension is running, and a module-level `_()` throws
+ * called while an extension is running and a module-level `_()` throws
  * "gettext can only be called from extensions" at import time.
  *
  * @param {string} state the session state reported by the helper
@@ -125,9 +125,9 @@ class DeviceRow extends PopupMenu.PopupBaseMenuItem {
         if (device.protocol === 'miracast-handoff')
             detail = device.model || _('Opens Network Displays');
         else if (device.cast_type === 'audio')
-            detail = _('Speaker — cannot show a screen');
+            detail = _('Speaker cannot show a screen');
         else if (device.cast_type === 'group')
-            detail = _('Speaker group — cannot show a screen');
+            detail = _('Speaker group cannot show a screen');
         this._detail.text = detail;
         this._detail.visible = !!detail;
 
@@ -572,7 +572,7 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
             const mode = stream?.mode === 'extend' ? _('Extending') : _('Mirroring');
             const playing = sessions.filter(s => s.state === 'playing').length;
             this._setStatus(
-                `${mode} — ${playing}/${sessions.length} ${_('ready')}`);
+                `${mode} ${playing}/${sessions.length} ${_('ready')}`);
             return;
         }
         if (!this._rows.size) {

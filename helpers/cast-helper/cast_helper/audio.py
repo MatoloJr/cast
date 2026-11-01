@@ -2,7 +2,7 @@
 
 Captures what the computer is playing, not the microphone. The source is a
 PipeWire capture stream flagged `stream.capture.sink=true`, which WirePlumber
-routes to the default output's monitor — and keeps routed there if the user
+routes to the default output's monitor and keeps routed there if the user
 changes their default output, which a stream bound to a fixed
 `<sink>.monitor` node would not do.
 

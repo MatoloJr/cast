@@ -1,7 +1,7 @@
 """Miracast is a hand-off, never a cast session.
 
 Defect S11: the old helper marked the session "casting" the moment the
-GNOME Network Displays window opened, and Disconnect then did nothing at
+GNOME Network Displays window opened and Disconnect then did nothing at
 all, because there was never anything to disconnect. These tests exist so
 that cannot come back.
 """
@@ -68,10 +68,10 @@ def test_miracast_id_is_not_a_chromecast_id():
 def test_the_helper_never_creates_a_session_for_miracast():
     """Static check: nothing attaches a receiver to the Miracast id.
 
-    The receiver manager is the only thing that creates sessions, and the
+    The receiver manager is the only thing that creates sessions and the
     only way in is ReceiverManager.attach, which is called with devices
     drawn from discovery. The Miracast row is injected by the D-Bus layer
-    and is never in that dict, and StartCast rejects the id outright.
+    and is never in that dict and StartCast rejects the id outright.
     """
     service = (PACKAGE / "dbus_service.py").read_text()
 

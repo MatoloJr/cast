@@ -7,7 +7,7 @@ PYTHON  := $(firstword $(wildcard $(VENV)/bin/python) python3)
 RELEASE := cast-display-$(VERSION)
 
 # Files that make up the extension itself. The helper is deliberately not
-# among them: extensions.gnome.org reviews JavaScript, and shipping a Python
+# among them: extensions.gnome.org reviews JavaScript and shipping a Python
 # daemon inside the zip is not something a reviewer can sign off on. The
 # release tarball carries both.
 EXT_SOURCES := lib ui schemas stylesheet.css LICENSE

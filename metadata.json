@@ -1,7 +1,7 @@
 {
   "uuid": "display-and-cast@cast.tools",
   "name": "Cast Display",
-  "description": "Cast your screen to Chromecast and Google TV displays from Quick Settings: pick one display or several, mirror or extend, and hand off to Network Displays for Miracast.",
+  "description": "Cast your screen to Chromecast and Google TV displays from Quick Settings: pick one display or several, mirror or extend and hand off to Network Displays for Miracast.",
   "shell-version": [
     "45",
     "46",

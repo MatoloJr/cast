@@ -81,7 +81,7 @@ def test_stop_bumps_generation_so_late_work_is_abandoned():
     machine.fire(Event.STOP)
     assert machine.generation != generation
 
-    # A portal reply arriving now belongs to the abandoned generation, and
+    # A portal reply arriving now belongs to the abandoned generation and
     # the state machine will not accept it either.
     assert not machine.can(Event.PORTAL_READY)
     assert machine.fire_if_possible(Event.PORTAL_READY) is False

@@ -146,7 +146,7 @@ class CastService:
     def _devices_variant(self) -> GLib.Variant:
         entries = [d.to_variant_dict() for d in self._devices.values()]
         # Exactly one Miracast row, always present. It is a hand-off to
-        # GNOME Network Displays, never a cast target, and it never gets a
+        # GNOME Network Displays, never a cast target and it never gets a
         # session (defect S11). When GND is missing the row offers to
         # install it rather than disappearing.
         installed = miracast.available()

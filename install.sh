@@ -235,7 +235,7 @@ if [[ "${XDG_SESSION_TYPE:-}" == "wayland" ]]; then
   echo "  On Wayland the Shell cannot reload itself, so log out and back in"
   echo "  for the tile to appear. The helper is already running; no reboot."
 else
-  echo "  On X11 press Alt+F2, type r, and press Enter to reload the Shell."
+  echo "  On X11 press Alt+F2, type r and press Enter to reload the Shell."
 fi
 echo "  Then open Quick Settings → Cast Display → Connect."
 echo "  Helper logs: journalctl --user -u cast-helper.service -f"

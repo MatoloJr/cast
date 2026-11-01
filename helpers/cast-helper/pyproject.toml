@@ -23,7 +23,7 @@ ignore = [
     # because one receiver misbehaved; each one is logged.
     "BLE001",
     # An explicit try/except around teardown reads better here than
-    # contextlib.suppress, and matches the surrounding style.
+    # contextlib.suppress and matches the surrounding style.
     "SIM105",
     # enum.StrEnum needs Python 3.11; (str, Enum) also works on 3.9 and 3.10,
     # which the older GNOME releases in shell-version still ship.

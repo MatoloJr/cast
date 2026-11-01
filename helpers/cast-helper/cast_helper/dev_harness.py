@@ -11,7 +11,7 @@ install. Two switches:
 ``CAST_HELPER_FAKE_DEVICES=N``
     Add N fake receivers. "Playing" on a fake receiver runs ``ffprobe``
     against the stream URL and succeeds only if ffprobe decodes a video
-    stream — so a fake receiver is a real client that checks the bytes we
+    stream so a fake receiver is a real client that checks the bytes we
     serve are playable, not a stub that always says yes.
 """
 

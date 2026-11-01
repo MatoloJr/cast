@@ -47,7 +47,7 @@ class StreamServer:
         self._service: Gio.SocketService | None = None
         self._allowed: set[str] = set()
         self._on_client: Callable[[Gio.Socket], None] | None = None
-        # Keep connections referenced: multisocketsink writes to the fd, and
+        # Keep connections referenced: multisocketsink writes to the fd and
         # letting Python drop the GSocketConnection would close it underneath.
         self._handed_off: dict[int, Any] = {}
         self._rejections = 0
