@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from cast_helper import config, pipeline
+from cast_helper import audio, config, pipeline
 
 
 # -- encoder settings ------------------------------------------------------
@@ -127,6 +127,15 @@ def test_a_slow_receiver_is_bounded_and_dropped():
     assert "timeout=10000000000" in desc     # 10 s of no reads = gone
 
 
+def test_output_framerate_is_pinned_so_a_static_screen_still_streams():
+    """An idle screen emitted 1 fps with a framerate range, which starves
+    the receiver and trips the stall watchdog."""
+    desc = make_pipeline(fps=30)._description(-1, 0)
+    assert "framerate=30/1 !" in desc
+    assert "framerate=[1/1,30/1]" not in desc
+    assert "videorate" in desc
+
+
 def test_resolution_is_a_cap_not_a_target():
     """A smaller screen must not be upscaled just to hit the ceiling."""
     desc = make_pipeline(max_height=1080)._description(-1, 0)
@@ -152,7 +161,7 @@ def test_bitrate_defaults_by_resolution():
 def test_audio_is_muxed_into_the_same_container_when_asked(monkeypatch):
     monkeypatch.setenv("CAST_HELPER_TEST_SOURCE", "1")
     desc = make_pipeline(audio=True)._description(-1, 0)
-    if pipeline.pick_audio_encoder():
+    if audio.pick_encoder():
         assert "aacparse ! mux." in desc
         assert "audiotestsrc" in desc
         assert "rate=48000,channels=2" in desc

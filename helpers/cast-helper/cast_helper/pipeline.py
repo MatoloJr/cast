@@ -29,7 +29,7 @@ import gi
 gi.require_version("Gst", "1.0")
 from gi.repository import Gio, GLib, Gst  # noqa: E402
 
-from . import config, dev_harness  # noqa: E402
+from . import audio, config, dev_harness  # noqa: E402
 
 LOG = logging.getLogger("cast-helper.pipeline")
 
@@ -50,8 +50,6 @@ ENCODERS = (
     ("x264enc", "software (x264)"),
     ("openh264enc", "software (openh264)"),
 )
-
-AUDIO_ENCODERS = ("fdkaacenc", "avenc_aac", "voaacenc")
 
 # A screen that stops producing frames is not a still picture, it is a dead
 # stream. Without this the receiver sits on the last frame indefinitely and
@@ -113,13 +111,6 @@ def select_working_encoder(force: bool = False) -> Optional[tuple[str, str, str]
     if attempts:
         LOG.error("no working H.264 encoder; tried %s", "; ".join(attempts))
     _verified = None
-    return None
-
-
-def pick_audio_encoder() -> Optional[str]:
-    for name in AUDIO_ENCODERS:
-        if have(name):
-            return name
     return None
 
 
@@ -203,6 +194,8 @@ class Pipeline:
         self._last_buffer = 0.0
         self._watchdog: Optional[int] = None
         self._failed = False
+        self._audio_enabled = False
+        self._mute = audio.LocalMute() if options.mute_local else None
 
     # -- properties --------------------------------------------------------
 
@@ -217,6 +210,10 @@ class Pipeline:
     @property
     def encoder_note(self) -> str:
         return self._encoder_note
+
+    @property
+    def audio_enabled(self) -> bool:
+        return self._audio_enabled
 
     @property
     def clients(self) -> int:
@@ -273,10 +270,18 @@ class Pipeline:
         desc = (
             f"{source}{request} ! "
             f"videoconvert ! videoscale add-borders=true ! videorate ! "
+            # Width and height stay a range so a smaller screen passes
+            # through unscaled, but the framerate is pinned: a static screen
+            # emits almost no frames, which starves the receiver and would
+            # trip the stall watchdog. Measured on an idle extended desktop
+            # the stream came out at 1 fps. videorate duplicates frames to
+            # hold the rate, and x264 encodes an unchanged frame very
+            # cheaply.
             f"video/x-raw,format=NV12,"
             f"width=[2,{max_width},2],height=[2,{max_height},2],"
-            f"pixel-aspect-ratio=1/1,framerate=[1/1,{opts.fps}/1] ! "
+            f"pixel-aspect-ratio=1/1,framerate={opts.fps}/1 ! "
             f"queue leaky=downstream max-size-buffers=3 ! "
+            f"{audio.video_delay_description(opts.audio_delay_ms) if opts.audio else ''}"
             f"{encoder} ! h264parse config-interval=-1 ! "
             f"video/x-h264,stream-format=avc,alignment=au,profile=high ! "
             f"matroskamux name=mux streamable=true ! "
@@ -297,17 +302,42 @@ class Pipeline:
         )
 
         if opts.audio:
-            audio_encoder = pick_audio_encoder()
-            audio_source = dev_harness.audio_source_description()
-            if audio_encoder and audio_source:
-                desc += (
-                    f" {audio_source} ! audioconvert ! audioresample ! "
-                    f"audio/x-raw,rate=48000,channels=2 ! "
-                    f"{audio_encoder} ! aacparse ! mux."
-                )
+            branch = self._audio_branch(opts)
+            if branch:
+                desc += f" {branch}"
+                self._audio_enabled = True
             else:
-                LOG.warning("audio requested but unavailable; continuing without it")
+                LOG.warning(
+                    "audio was requested but no AAC encoder or capture source "
+                    "is available; continuing without it"
+                )
         return desc
+
+    def _audio_branch(self, opts: config.StreamOptions) -> str:
+        """The audio branch, from capture to the muxer.
+
+        In the dev harness the source is audiotestsrc, so the mux, encode and
+        delay path can be exercised without touching the real output.
+        """
+        encoder = audio.pick_encoder()
+        if encoder is None:
+            return ""
+
+        test_source = dev_harness.audio_source_description()
+        if test_source:
+            delay = ""
+            if opts.audio_delay_ms > 0:
+                delay = (
+                    f"queue max-size-time=0 max-size-buffers=0 "
+                    f"min-threshold-time={opts.audio_delay_ms * 1_000_000} ! "
+                )
+            return (
+                f"{test_source} ! audioconvert ! audioresample ! "
+                f"audio/x-raw,rate={audio.SAMPLE_RATE},"
+                f"channels={audio.CHANNELS} ! "
+                f"{delay}{encoder[1]} ! aacparse ! mux."
+            )
+        return audio.branch_description(opts.audio_delay_ms) or ""
 
     def start(self, fd: int, node_id: int) -> None:
         desc = self._description(fd, node_id)
@@ -332,8 +362,12 @@ class Pipeline:
         result = self._pipeline.set_state(Gst.State.PLAYING)
         if result == Gst.StateChangeReturn.FAILURE:
             raise PipelineError("pipeline refused to start")
+        if self._mute is not None:
+            self._mute.engage()
         LOG.info(
-            "pipeline started with %s (%s)", self._encoder_name, self._encoder_kind
+            "pipeline started with %s (%s)%s",
+            self._encoder_name, self._encoder_kind,
+            " + audio" if self._audio_enabled else "",
         )
 
     # -- watchdog ----------------------------------------------------------
@@ -373,6 +407,8 @@ class Pipeline:
         return True
 
     def stop(self) -> None:
+        if self._mute is not None:
+            self._mute.release()
         if self._watchdog is not None:
             GLib.source_remove(self._watchdog)
             self._watchdog = None
@@ -441,7 +477,6 @@ def capabilities() -> dict[str, Any]:
     init_gst()
     encoders = available_encoders()
     chosen = select_working_encoder()
-    audio_encoder = pick_audio_encoder()
     virtual = False
     try:
         from .portal import SOURCE_VIRTUAL
@@ -466,8 +501,7 @@ def capabilities() -> dict[str, Any]:
         "encoder_note": chosen[2] if chosen else "",
         "hw_encode": bool(chosen and "hardware" in chosen[1]),
         "virtual_source": virtual,
-        "audio": bool(audio_encoder),
-        "audio_encoder": audio_encoder or "",
         "formats": list(config.ENABLED_FORMATS),
         "mux": "matroskamux",
+        **audio.describe(),
     }

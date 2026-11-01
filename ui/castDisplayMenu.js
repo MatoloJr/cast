@@ -316,7 +316,11 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
             mode: this._settings.get_string('cast-mode'),
             audio: this._settings.get_boolean('cast-audio'),
             fps: this._settings.get_int('cast-fps'),
+            mute_local: this._settings.get_boolean('cast-mute-local'),
         };
+        const audioDelay = this._settings.get_int('cast-audio-delay-ms');
+        if (audioDelay !== 0)
+            options.audio_delay_ms = audioDelay;
         const height = this._settings.get_int('cast-max-height');
         if (height > 0)
             options.max_height = height;

@@ -75,6 +75,8 @@ class StreamOptions:
     fps: int = 30
     bitrate_kbps: int = 0          # 0 → pick from resolution
     port_range: tuple[int, int] = DEFAULT_PORT_RANGE
+    mute_local: bool = False
+    audio_delay_ms: int = 0
 
     @property
     def content_type(self) -> str:
@@ -114,6 +116,9 @@ class StreamOptions:
         opts.fmt = raw_fmt
 
         opts.audio = bool(options.get("audio", opts.audio))
+        opts.mute_local = bool(options.get("mute_local", opts.mute_local))
+        opts.audio_delay_ms = max(-2000, min(2000, int(
+            options.get("audio_delay_ms", 0))))
         opts.max_height = max(480, min(2160, int(options.get("max_height", opts.max_height))))
         opts.fps = max(10, min(60, int(options.get("fps", opts.fps))))
         opts.bitrate_kbps = max(0, min(50000, int(options.get("bitrate_kbps", 0))))
