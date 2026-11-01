@@ -39,7 +39,7 @@ export const speakerGroup = device('uuid-group', 'Downstairs', {
 });
 
 /**
- * The one synthetic row. It is a hand-off, never a cast target, and
+ * The one synthetic row. It is a hand-off, never a cast target and
  * `StartCast` on it returns Unsupported (defect S11).
  */
 export const miracastHandoff = device('miracast', 'Other wireless displays (Miracast)', {

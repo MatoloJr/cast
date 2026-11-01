@@ -81,7 +81,7 @@
  *
  * It replaces the Quick Settings dropdown, which had no scroll view and no
  * height bound and so ran off the bottom of a laptop panel. Only the device
- * list grows; everything else is fixed, and the list's max-height is set
+ * list grows; everything else is fixed and the list's max-height is set
  * from the work area at runtime (see lib/dialogMetrics.js).
  *
  * The width stays at the 28em the Shell's own .prompt-dialog uses, so the
@@ -137,7 +137,7 @@
     opacity: 0.7;
 }
 
-/* Mirror | Extend, and the local-screen actions. The Shell themes
+/* Mirror | Extend and the local-screen actions. The Shell themes
  * .button:checked with the accent colour, so the active half needs no
  * colour of its own here. */
 .cast-dialog-segmented {
@@ -148,7 +148,7 @@
     opacity: 0.5;
 }
 
-/* A switch row: label on the left, toggle on the right, and the whole row
+/* A switch row: label on the left, toggle on the right and the whole row
  * is the hit target. */
 .cast-dialog-row {
     padding: 6px 12px;

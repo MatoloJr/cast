@@ -213,8 +213,8 @@ Result:
       TV again **without** opening the dialog
 - [ ] Switch that TV off, then click the tile: it opens the dialog rather
       than hanging on a receiver that is not there
-- [ ] Preferences → *Forget* clears it, and the tile opens the dialog again
-- [ ] `Super`+`K` opens the dialog with Quick Settings closed, and from the
+- [ ] Preferences → *Forget* clears it and the tile opens the dialog again
+- [ ] `Super`+`K` opens the dialog with Quick Settings closed and from the
       overview, with no panel flashing open behind it
 - [ ] The chevron never shows an empty dropdown
 

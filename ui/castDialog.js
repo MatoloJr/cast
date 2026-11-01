@@ -63,7 +63,7 @@ const SESSION_STYLES = {
  * matters here.
  *
  * It stays a PopupBaseMenuItem outside a menu on purpose: `_getTopMenu()`
- * returns itself when it has no parent menu, and the hover, `:selected` and
+ * returns itself when it has no parent menu and the hover, `:selected` and
  * keyboard-activate behaviour are all things an St.Button would have to
  * re-implement.
  */
@@ -191,7 +191,7 @@ class DeviceRow extends PopupMenu.PopupBaseMenuItem {
  * under its tile, has no scroll view and no height bound, so on a laptop
  * panel the lower half the mode control, the switches and the settings
  * link simply ran off the bottom of the screen with no way to reach it.
- * A dialog can be measured against the work area, and only its device list
+ * A dialog can be measured against the work area and only its device list
  * grows.
  *
  * It owns no subscriptions. The toggle keeps those and calls `sync()`, so a
@@ -661,7 +661,7 @@ class CastDialog extends ModalDialog.ModalDialog {
     // -- teardown ----------------------------------------------------------
 
     open(...args) {
-        // Budget once up front so nothing unbounded is ever drawn, and again
+        // Budget once up front so nothing unbounded is ever drawn and again
         // from the `opened` signal, which is the first point the labels have
         // a real width to wrap against.
         this._applyHeightBudget();

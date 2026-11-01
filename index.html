@@ -2,7 +2,7 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cantarell:wght@400;700&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;600&display=swap">
 <style>
-/* Layout: one reading column, a sticky section rail on wide screens, and
+/* Layout: one reading column, a sticky section rail on wide screens and
    full-width bands only where the page changes register (the honesty note,
    the support matrix). The status markers are the ones `--doctor` prints. */
 :root {
@@ -235,7 +235,7 @@ footer .wrap { padding-block: 1.8rem 2.6rem; }
         <p class="lede">
             Cast your screen to Chromecast and Google TV from GNOME's Quick
             Settings. Mirror a screen or extend your desktop onto the
-            television, send the audio with it, and drive several receivers
+            television, send the audio with it and drive several receivers
             from a single encode.
         </p>
         <div class="masthead-meta">
@@ -293,7 +293,7 @@ footer .wrap { padding-block: 1.8rem 2.6rem; }
     </div>
     <p>
         While casting, a cast icon appears in the top bar with the receiver
-        count, and notification banners can be hidden automatically.
+        count and notification banners can be hidden automatically.
     </p>
 
     <h2 id="requirements">Requirements</h2>
@@ -301,7 +301,7 @@ footer .wrap { padding-block: 1.8rem 2.6rem; }
         <li><strong>GNOME Shell 45&ndash;50</strong>, on Wayland. Developed and verified on 50.1.</li>
         <li><strong>PipeWire</strong> and a working <code>xdg-desktop-portal</code> with the ScreenCast interface. Portal version&nbsp;4+ avoids a permission prompt on every connect; <em>Extend</em> additionally needs the portal to offer the <code>VIRTUAL</code> source type.</li>
         <li>An <strong>H.264 encoder</strong> GStreamer can use &mdash; VA-API (<code>vah264enc</code>) if you have it, otherwise <code>x264enc</code>.</li>
-        <li><strong>Python 3.9+</strong> with PyGObject, and <code>ffmpeg</code> for the diagnostics.</li>
+        <li><strong>Python 3.9+</strong> with PyGObject and <code>ffmpeg</code> for the diagnostics.</li>
     </ul>
 
     <h2 id="install">Install</h2>
@@ -314,7 +314,7 @@ cd cast
     <p>
         Then <strong>log out and back in</strong>. On Wayland the Shell cannot
         reload itself, so the tile will not appear until the session restarts.
-        No reboot is needed, and the helper starts immediately. On X11 press
+        No reboot is needed and the helper starts immediately. On X11 press
         <code>Alt</code>+<code>F2</code>, type <code>r</code> and press Enter
         instead.
     </p>
@@ -359,9 +359,9 @@ make release                 <span class="c"># a tarball with extension, helper 
     </p>
     <ul>
         <li>The <strong>chevron</strong> opens a dialog in the middle of the screen. Tick one or more displays and press <strong>Connect</strong>.</li>
-        <li>The <strong>tile itself</strong> is a switch. While a cast is running it stops it. Otherwise it casts straight back to the receivers you last used, and only falls back to opening the dialog when there is nothing to go back to.</li>
+        <li>The <strong>tile itself</strong> is a switch. While a cast is running it stops it. Otherwise it casts straight back to the receivers you last used and only falls back to opening the dialog when there is nothing to go back to.</li>
         <li><code>Super</code>+<code>K</code> opens the dialog from anywhere, without going through Quick Settings.</li>
-        <li>Everything else lives in the preferences: mode, resolution, frame rate, bitrate, audio and its offset, the port range, the shortcut, and a <em>Forget</em> button that clears the receivers the tile resumes to.</li>
+        <li>Everything else lives in the preferences: mode, resolution, frame rate, bitrate, audio and its offset, the port range, the shortcut and a <em>Forget</em> button that clears the receivers the tile resumes to.</li>
     </ul>
     <div class="note">
         <p>
@@ -395,7 +395,7 @@ make release                 <span class="c"># a tarball with extension, helper 
     <div class="note note-warn">
         <p>
             Two things it will not do silently. The <code>ufw</code> rule is
-            only <em>offered</em> for removal, and never removed without
+            only <em>offered</em> for removal and never removed without
             asking; and on Wayland the extension stays loaded until you log
             out and back in. Your clone of the repository is left alone &mdash;
             delete it yourself when you are done with it.
@@ -426,7 +426,7 @@ make release                 <span class="c"># a tarball with extension, helper 
         <table>
             <thead><tr><th>Protocol</th><th>Status</th><th>Notes</th></tr></thead>
             <tbody>
-                <tr><td><strong>Google Cast</strong><br><small>Chromecast, Google TV, Android TV</small></td><td><span class="mark mark-ok">[ok&nbsp;&nbsp;]</span> implemented</td><td>The only real transport. mDNS discovery, then Matroska + H.264 over HTTP. Speakers and speaker groups are discovered but cannot show a screen, so they are hidden unless you ask for them.</td></tr>
+                <tr><td><strong>Google Cast</strong><br><small>Chromecast, Google TV android TV</small></td><td><span class="mark mark-ok">[ok&nbsp;&nbsp;]</span> implemented</td><td>The only real transport. mDNS discovery, then Matroska + H.264 over HTTP. Speakers and speaker groups are discovered but cannot show a screen, so they are hidden unless you ask for them.</td></tr>
                 <tr><td><strong>Miracast</strong></td><td><span class="mark mark-warn">[warn]</span> hand-off only</td><td>Not implemented. Native Miracast means Wi-Fi Direct group negotiation, a WFD/RTSP session and usually HDCP &mdash; a wireless-stack problem rather than a streaming one. The list carries exactly one Miracast row and it opens GNOME Network Displays, which does it properly. No cast session is ever created for it.</td></tr>
                 <tr><td><strong>DLNA / UPnP</strong></td><td><span class="mark mark-fail">[FAIL]</span> not supported</td><td>No code, no plans on this page.</td></tr>
                 <tr><td><strong>AirPlay</strong></td><td><span class="mark mark-fail">[FAIL]</span> not supported</td><td>Same.</td></tr>
@@ -445,7 +445,7 @@ make release                 <span class="c"># a tarball with extension, helper 
     </div>
 
     <h2 id="platforms">How many operating systems</h2>
-    <p><strong>One.</strong> This is a GNOME Shell extension plus a PipeWire screencast, and nothing about it is portable.</p>
+    <p><strong>One.</strong> This is a GNOME Shell extension plus a PipeWire screencast and nothing about it is portable.</p>
     <div class="scroller">
         <table>
             <thead><tr><th>Platform</th><th>Status</th></tr></thead>
@@ -564,7 +564,7 @@ gdbus call --session -d org.cast.tools.Cast1 -o /org/cast/tools/Cast1 \
         (<code>org.cast.tools.Cast1</code>, API v2).
     </p>
     <p>
-        The Shell is single-threaded and shared with the whole desktop, and a
+        The Shell is single-threaded and shared with the whole desktop and a
         stall in an extension stalls the session. Capture, H.264 encoding,
         mDNS discovery and talking to televisions all block or go wrong
         slowly, so they live in a separate process that systemd can restart
@@ -604,7 +604,7 @@ gdbus call --session -d org.cast.tools.Cast1 -o /org/cast/tools/Cast1 \
     <h2 id="dev">Development</h2>
     <p>
         Neither a television nor a second monitor is needed. The harness
-        replaces both, and a fake receiver is not a stub: &ldquo;playing&rdquo;
+        replaces both and a fake receiver is not a stub: &ldquo;playing&rdquo;
         runs <code>ffprobe</code> against the stream URL and fails unless a
         video stream actually decodes.
     </p>
@@ -622,13 +622,13 @@ cd helpers/cast-helper
     <p>
         CI runs three jobs: the helper (ruff, then pytest under
         <code>dbus-run-session</code>), the extension (eslint,
-        <code>node --test</code>, and a strict schema compile), and packaging,
+        <code>node --test</code> and a strict schema compile) and packaging,
         which builds both the extension zip and the release tarball and
         asserts that the Python helper has not leaked into the zip.
     </p>
     <p>Further reading lives in the repository, under <code>docs/</code>:
         the architecture, how the stream format was established, the exact
-        caps that make a virtual monitor usable, the hardware checklist, and
+        caps that make a virtual monitor usable, the hardware checklist and
         the defects this rewrite fixed &mdash; each reproduced by measurement
         first.
     </p>

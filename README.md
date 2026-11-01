@@ -17,8 +17,8 @@ network bandwidth rather than another encoder.
 > working on one; read [docs/format-spike.md](docs/format-spike.md) before
 > trusting the format choice.
 
-A single-page version of everything below — install, uninstall, running it,
-how many devices, which operating systems — is in
+A single-page version of everything below install, uninstall, running it,
+how many devices, which operating systems is in
 [index.html](index.html); open it in a browser.
 
 ## What it does
@@ -77,7 +77,7 @@ Quick Settings → **Cast Display**. The **chevron** opens a dialog in the
 middle of the screen: tick one or more displays and press **Connect**.
 
 The **tile itself** is a switch. While a cast is running it stops it;
-otherwise it casts straight back to the receivers you last used, and only
+otherwise it casts straight back to the receivers you last used and only
 falls back to opening the dialog when there is nothing to go back to. Clear
 that memory with *Forget* in the preferences.
 

@@ -88,10 +88,10 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
      * Point every route into the dropdown at the dialog instead.
      *
      * The chevron's handler is wired inside `QuickMenuToggle._init()` as an
-     * anonymous `() => this.menu.open()` closure, and GJS cannot disconnect
+     * anonymous `() => this.menu.open()` closure and GJS cannot disconnect
      * a handler it has no id for. The arrow button itself is no better a
      * target: it is `this._menuButton` on GNOME 50 but not under a name
-     * worth relying on across 45-50, and the style class it carries was
+     * worth relying on across 45-50 and the style class it carries was
      * renamed between 44 and 45. That one method, though, is what the
      * chevron, the Menu key via `popup-menu` and our own Super+K all call,
      * so it is the only thing worth intercepting.
@@ -128,7 +128,7 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
             return;
 
         // A modal dialog over an open quick-settings popup is wrong twice:
-        // the popup stays drawn underneath, and pushModal() has to take the
+        // the popup stays drawn underneath and pushModal() has to take the
         // keyboard off the panel's own grab. The panel drops it on close.
         Main.panel.statusArea.quickSettings?.menu.close();
 
@@ -192,8 +192,8 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
     }
 
     async _resume(ids) {
-        // Optimistic, and corrected by the next _sync(): StartCast returns
-        // in tens of milliseconds but the receivers take seconds, and a tile
+        // Optimistic and corrected by the next _sync(): StartCast returns
+        // in tens of milliseconds but the receivers take seconds and a tile
         // that sits unchecked in between reads as "the click did nothing".
         this._syncTile(true, _('Starting…'));
         try {
