@@ -134,16 +134,28 @@
       <default>false</default>
       <summary>Show audio-only targets</summary>
       <description>
-        List speakers and speaker groups in the device menu. They cannot
+        List speakers and speaker groups in the device list. They cannot
         show a screen, so they are hidden by default.
+      </description>
+    </key>
+
+    <key name="cast-last-devices" type="as">
+      <default>[]</default>
+      <summary>Receivers the last cast went to</summary>
+      <description>
+        Written when a cast starts, so clicking the tile resumes to the same
+        receivers without opening the picker. Ids are never pruned on write
+        a television that is switched off should still be remembered
+        tomorrow and are resolved against discovery at click time, so a
+        receiver that is no longer there opens the picker instead.
       </description>
     </key>
 
     <key name="open-cast-menu" type="as">
       <default><![CDATA[['<Super>k']]]></default>
-      <summary>Open the Cast Display menu</summary>
-      <description>Keyboard shortcut that opens Quick Settings at the Cast
-        Display menu.
+      <summary>Open the Cast Display dialog</summary>
+      <description>Keyboard shortcut that opens the Cast Display dialog,
+        without needing Quick Settings to be open first.
       </description>
     </key>
 

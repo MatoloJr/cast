@@ -9,6 +9,7 @@ export default [
             sourceType: 'module',
             globals: {
                 console: 'readonly',
+                global: 'readonly',
                 globalThis: 'readonly',
                 imports: 'readonly',
                 log: 'readonly',
