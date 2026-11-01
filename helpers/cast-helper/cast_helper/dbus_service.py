@@ -145,19 +145,25 @@ class CastService:
 
     def _devices_variant(self) -> GLib.Variant:
         entries = [d.to_variant_dict() for d in self._devices.values()]
-        if miracast.available():
-            entries.append(
-                {
-                    "id": config.MIRACAST_ID,
-                    "name": "Other wireless displays (Miracast)",
-                    "model": miracast.hint(),
-                    "manufacturer": "",
-                    "protocol": discovery.PROTOCOL_MIRACAST,
-                    "cast_type": "cast",
-                    "host": "",
-                    "video_capable": True,
-                }
-            )
+        # Exactly one Miracast row, always present. It is a hand-off to
+        # GNOME Network Displays, never a cast target, and it never gets a
+        # session (defect S11). When GND is missing the row offers to
+        # install it rather than disappearing.
+        installed = miracast.available()
+        entries.append(
+            {
+                "id": config.MIRACAST_ID,
+                "name": ("Other wireless displays (Miracast)" if installed
+                         else "Install Network Displays"),
+                "model": miracast.hint(),
+                "manufacturer": "",
+                "protocol": discovery.PROTOCOL_MIRACAST,
+                "cast_type": "cast",
+                "host": "",
+                "video_capable": False,
+                "install_uri": "" if installed else miracast.store_uri(),
+            }
+        )
         return GLib.Variant("aa{sv}", [_pack(e) for e in entries])
 
     def _sessions_variant(self) -> GLib.Variant:
@@ -274,6 +280,11 @@ class CastService:
                 self.stop_all()
                 invocation.return_value(None)
             elif method == "OpenMiracast":
+                if not miracast.available():
+                    raise _ServiceError(
+                        config.ERR_NOT_FOUND,
+                        "GNOME Network Displays is not installed",
+                    )
                 miracast.open_app()
                 invocation.return_value(None)
             else:

@@ -1,4 +1,5 @@
 import Clutter from 'gi://Clutter';
+import Gio from 'gi://Gio';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 
@@ -148,10 +149,13 @@ class DeviceRow extends PopupMenu.PopupBaseMenuItem {
             this._check.opacity = selected ? 255 : 0;
         }
 
-        // An audio target can never show a screen, so it is never selectable.
-        const selectable = device.video_capable !== false &&
-            device.protocol !== 'miracast-handoff';
-        this.sensitive = selectable || device.protocol === 'miracast-handoff';
+        // An audio target can never show a screen, so it is never
+        // selectable. The Miracast hand-off is clickable but is an action,
+        // not a selection, so it never shows a check mark.
+        this._isHandoff = device.protocol === 'miracast-handoff';
+        this.sensitive = this._isHandoff || device.video_capable !== false;
+        if (this._isHandoff)
+            this._check.opacity = 0;
     }
 
     destroy() {
@@ -393,7 +397,19 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
             return;
 
         if (device.protocol === 'miracast-handoff') {
-            this._client.openMiracast().catch(e => this._reportFailure(e));
+            // A hand-off, never a cast: no session is created and the tile
+            // does not change state (defect S11).
+            if (device.install_uri) {
+                // The Shell opens the store page. The helper never runs
+                // sudo on the user's behalf.
+                try {
+                    Gio.AppInfo.launch_default_for_uri(device.install_uri, null);
+                } catch (e) {
+                    this._reportFailure(e);
+                }
+            } else {
+                this._client.openMiracast().catch(e => this._reportFailure(e));
+            }
             this.menu.close();
             return;
         }
@@ -495,6 +511,11 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
     _syncRows(sessionById) {
         const showSpeakers = this._settings.get_boolean('cast-show-speakers');
         const devices = this._client.devices.filter(device => {
+            // The Miracast hand-off reports video_capable false because it
+            // is not a cast target, but it is not a speaker either and must
+            // always be listed.
+            if (device.protocol === 'miracast-handoff')
+                return true;
             if (device.video_capable === false)
                 return showSpeakers;
             return true;

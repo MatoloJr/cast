@@ -50,6 +50,7 @@ class Device:
             "cast_type": self.cast_type,
             "host": self.host,
             "video_capable": self.video_capable,
+            "install_uri": "",
         }
 
 
