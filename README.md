@@ -69,11 +69,22 @@ silently.
 
 ## Using it
 
-Quick Settings → **Cast Display**. The chevron opens the menu; tick one or
-more displays and press **Connect**. The tile turns off the cast.
+Quick Settings → **Cast Display**. The **chevron** opens a dialog in the
+middle of the screen: tick one or more displays and press **Connect**.
 
-`Super`+`K` opens the menu. Everything else lives in the preferences:
-mode, resolution, frame rate, bitrate, audio, port range and the shortcut.
+The **tile itself** is a switch. While a cast is running it stops it;
+otherwise it casts straight back to the receivers you last used, and only
+falls back to opening the dialog when there is nothing to go back to. Clear
+that memory with *Forget* in the preferences.
+
+`Super`+`K` opens the dialog from anywhere, without going through Quick
+Settings. Everything else lives in the preferences: mode, resolution, frame
+rate, bitrate, audio, port range and the shortcut.
+
+> The picker used to be a Quick Settings dropdown. A dropdown is anchored
+> under its tile, has no scroll view and no height bound, so on a laptop
+> panel its lower half simply ran off the bottom of the screen. The dialog
+> measures itself against the work area and scrolls only the device list.
 
 ## If something goes wrong
 

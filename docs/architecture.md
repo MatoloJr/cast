@@ -10,10 +10,11 @@ GNOME Shell (GJS)                         cast-helper (Python, systemd --user)
 │ extension.js                  │        │ __main__.py       bus name + loop    │
 │   QS tile, top-bar indicator, │        │ dbus_service.py   org.cast.tools.    │
 │   Super+K, lifecycle          │        │                   Cast1, API v2      │
-│ ui/castDisplayMenu.js         │ D-Bus  │ state.py          the one state      │
-│   incremental device rows     │◄──────►│                   machine            │
+│ ui/castDisplayMenu.js  tile   │ D-Bus  │ state.py          the one state      │
+│ ui/castDialog.js  the picker  │◄──────►│                   machine            │
 │ lib/castClient.js             │ props  │ discovery.py      CastBrowser        │
-│   cached props + signals      │ + sigs │ portal.py         ScreenCast, async  │
+│ lib/tileAction.js (pure,tested)│ + sigs │ portal.py         ScreenCast, async  │
+│ lib/dialogMetrics.js  (pure)  │        │                                      │
 │ lib/displayModes.js           │        │ pipeline.py       GStreamer          │
 │ lib/layout.js   (pure, tested)│        │ stream_server.py  HTTP + handoff     │
 │ lib/layoutGuard.js revert     │        │ receivers.py      N × Chromecast     │

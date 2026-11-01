@@ -237,7 +237,8 @@ if [[ "${XDG_SESSION_TYPE:-}" == "wayland" ]]; then
 else
   echo "  On X11 press Alt+F2, type r and press Enter to reload the Shell."
 fi
-echo "  Then open Quick Settings → Cast Display → Connect."
+echo "  Then open Quick Settings → Cast Display, click the chevron,"
+echo "  pick a display and press Connect. Super+K opens it directly."
 echo "  Helper logs: journalctl --user -u cast-helper.service -f"
 echo "  List devices: gdbus call --session -d org.cast.tools.Cast1 \\"
 echo "    -o /org/cast/tools/Cast1 \\"

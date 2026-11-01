@@ -97,13 +97,15 @@ export default class CastDisplayPreferences extends ExtensionPreferences {
             _('Show speakers in the list'),
             _('Audio-only targets cannot display a screen')));
 
+        group.add(this._forgetRow(settings));
+
         const shortcutGroup = new Adw.PreferencesGroup({
             title: _('Keyboard shortcut'),
-            description: _('Opens Quick Settings at the Cast Display menu'),
+            description: _('Opens the Cast Display dialog from anywhere'),
         });
         page.add(shortcutGroup);
         shortcutGroup.add(this._shortcutRow(settings, 'open-cast-menu',
-            _('Open the Cast Display menu')));
+            _('Open the Cast Display dialog')));
 
         if (caps)
             page.add(this._buildStatusGroup(caps));
@@ -292,6 +294,38 @@ export default class CastDisplayPreferences extends ExtensionPreferences {
         if (subtitle)
             row.subtitle = subtitle;
         settings.bind(key, row, 'active', Gio.SettingsBindFlags.DEFAULT);
+        return row;
+    }
+
+    /**
+     * Clear the receivers the tile resumes to.
+     *
+     * `cast-last-devices` is written by casting, never by a control the
+     * user can see, so without this there is no way to find out what the
+     * tile will do next, or to tell it to stop doing it.
+     */
+    _forgetRow(settings) {
+        const row = new Adw.ActionRow({
+            title: _('Receivers the tile resumes to'),
+        });
+        const button = new Gtk.Button({
+            label: _('Forget'),
+            valign: Gtk.Align.CENTER,
+        });
+        const sync = () => {
+            const names = settings.get_strv('cast-last-devices');
+            row.subtitle = names.length
+                ? _('Clicking the tile casts to %d remembered receiver(s)')
+                    .replace('%d', String(names.length))
+                : _('None remembered: clicking the tile opens the picker');
+            button.sensitive = names.length > 0;
+        };
+        button.connect('clicked', () => {
+            settings.set_strv('cast-last-devices', []);
+            sync();
+        });
+        row.add_suffix(button);
+        sync();
         return row;
     }
 

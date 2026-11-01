@@ -27,7 +27,7 @@ Record results inline. "Not run" is a useful answer; a guess is not.
 
 ### 1. Single receiver, Mirror, first picture
 
-- [ ] Quick Settings → Cast Display → pick one TV → **Connect**
+- [ ] Quick Settings → Cast Display → **chevron** → pick one TV → **Connect**
 - [ ] Approve the screen-share prompt
 - [ ] **First frame on the TV within 5 s**
 - [ ] Latency under 2 s put a clock or stopwatch on screen and compare
@@ -57,7 +57,7 @@ Result:
 
 ### 4. Add a third receiver mid-stream
 
-- [ ] While two are playing, open the menu and add a third
+- [ ] While two are playing, open the dialog and add a third
 - [ ] **No new screen-share prompt**
 - [ ] The first two **do not drop or stutter**
 - [ ] The third starts within ~5 s
@@ -69,7 +69,7 @@ Result:
 
 ### 5. Remove one of three
 
-- [ ] Disconnect one receiver from the menu
+- [ ] Disconnect one receiver from the dialog
 - [ ] The other two continue uninterrupted
 - [ ] The removed one returns to its home screen
 
@@ -78,7 +78,7 @@ Result:
 ### 6. The user stops it on the device
 
 - [ ] Press Home on the TV remote
-- [ ] That session disappears from the menu within 5 s
+- [ ] That session disappears from the dialog within 5 s
 - [ ] Other receivers keep playing
 - [ ] Tile shows the right state
 
@@ -96,7 +96,7 @@ Result:
 
 - [ ] Cast to one TV, then lock the screen
 - [ ] **The cast continues** (`disable()` must not stop it)
-- [ ] Unlock: the menu still shows the live session
+- [ ] Unlock: the dialog still shows the live session
 - [ ] Stop the cast: notification banners come back (presentation mode off)
 
 This is gap G4. The old code stopped the cast on lock and left presentation
@@ -181,6 +181,42 @@ hardware path is unverified.
 - [ ] Casting 1080p30 uses markedly less CPU than the software numbers below
 - [ ] If the hardware encoder fails at runtime, the helper falls back to x264
       automatically and says so in `Capabilities.encoder_note`
+
+Result:
+
+### 16. The dialog fits the screen it is on
+
+This is the defect the dialog exists for: the old Quick Settings dropdown
+ran off the bottom of a laptop panel and its lower half could not be
+reached at all.
+
+Verified headlessly on a 1366x768 virtual monitor with 12 devices: work
+area 736 px, device list clamped from a natural 768 px to **393 px**, whole
+dialog **697 px**. Repeat it on real hardware, because a theme with a
+larger font changes the chrome height:
+
+- [ ] On the smallest screen you have, with as many receivers as you can
+      get listed, open the dialog
+- [ ] **Connect**, **Stop casting** and **Close** are all on screen
+- [ ] The device list scrolls; nothing else does
+- [ ] Mode, the switches and the settings link are all reachable
+- [ ] Drag the dialog's monitor out (unplug a second screen) while it is
+      open: it re-sizes rather than being clipped
+
+Result:
+
+### 17. The tile is a switch, not a second menu
+
+- [ ] With no cast history, clicking the **tile body** opens the dialog and
+      the tile does **not** latch on
+- [ ] Cast to a TV, stop, then click the tile body: it casts to that same
+      TV again **without** opening the dialog
+- [ ] Switch that TV off, then click the tile: it opens the dialog rather
+      than hanging on a receiver that is not there
+- [ ] Preferences → *Forget* clears it, and the tile opens the dialog again
+- [ ] `Super`+`K` opens the dialog with Quick Settings closed, and from the
+      overview, with no panel flashing open behind it
+- [ ] The chevron never shows an empty dropdown
 
 Result:
 
