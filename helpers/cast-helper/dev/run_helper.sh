@@ -60,6 +60,19 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Anything still holding the bus name will make this instance log
+# "lost the bus name" and exit. That is usually a dev helper left running by
+# a previous session, or the installed unit revived by D-Bus activation.
+OWNER=$(gdbus call --session -d org.freedesktop.DBus -o /org/freedesktop/DBus \
+  -m org.freedesktop.DBus.GetConnectionUnixProcessID org.cast.tools.Cast1 \
+  2>/dev/null | sed -nE 's/.*uint32 ([0-9]+).*/\1/p' || true)
+if [[ -n "$OWNER" ]]; then
+  echo "==> org.cast.tools.Cast1 is already owned by pid $OWNER:" >&2
+  ps -o pid=,cmd= -p "$OWNER" 2>/dev/null | sed 's/^/    /' >&2
+  echo "    Stop it first, or this helper will exit immediately." >&2
+  exit 1
+fi
+
 echo "==> Running helper from $HELPER_DIR (log=$CAST_HELPER_LOG)"
 [[ -n "${CAST_HELPER_TEST_SOURCE:-}" ]] && echo "    test source: on"
 [[ -n "${CAST_HELPER_FAKE_DEVICES:-}" ]] && echo "    fake receivers: $CAST_HELPER_FAKE_DEVICES"

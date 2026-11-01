@@ -5,6 +5,13 @@
     <value nick="extend" value="1"/>
   </enum>
 
+  <enum id="org.gnome.shell.extensions.display-and-cast.position">
+    <value nick="right" value="0"/>
+    <value nick="left" value="1"/>
+    <value nick="above" value="2"/>
+    <value nick="below" value="3"/>
+  </enum>
+
   <schema id="org.gnome.shell.extensions.display-and-cast"
           path="/org/gnome/shell/extensions/display-and-cast/">
 
@@ -15,6 +22,26 @@
         Whether a new cast mirrors an existing screen or extends the desktop
         onto the receiver with a virtual monitor. Extend requires a desktop
         that offers the portal's VIRTUAL source type.
+      </description>
+    </key>
+
+    <key name="cast-extend-position"
+         enum="org.gnome.shell.extensions.display-and-cast.position">
+      <default>"right"</default>
+      <summary>Where the extended display sits</summary>
+      <description>
+        Where to place the virtual monitor relative to the existing screens
+        when extending onto a receiver.
+      </description>
+    </key>
+
+    <key name="cast-display-only" type="b">
+      <default>false</default>
+      <summary>Turn off this computer's screens while extending</summary>
+      <description>
+        The equivalent of "Second screen only": extend onto the receiver,
+        then disable the physical monitors. Always confirmed with a timed
+        dialog that reverts if there is no answer.
       </description>
     </key>
 

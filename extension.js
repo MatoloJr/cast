@@ -9,6 +9,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js';
 
 import {CastClient} from './lib/castClient.js';
+import {DisplayModeManager} from './lib/displayModes.js';
 import {PresentationMode} from './lib/presentationMode.js';
 import {CastDisplayMenuToggle} from './ui/castDisplayMenu.js';
 
@@ -23,7 +24,7 @@ function _warn(message, error) {
 
 const CastDisplayIndicator = GObject.registerClass(
 class CastDisplayIndicator extends QuickSettings.SystemIndicator {
-    _init(extension, client, presentation) {
+    _init(extension, client, presentation, displayModes) {
         super._init();
 
         // Visible only while the screen is actually being streamed. The old
@@ -48,7 +49,8 @@ class CastDisplayIndicator extends QuickSettings.SystemIndicator {
         this._availabilityId = client.connect('availability-changed',
             () => this._sync());
 
-        this._menuToggle = new CastDisplayMenuToggle(extension, client, presentation);
+        this._menuToggle = new CastDisplayMenuToggle(
+            extension, client, presentation, displayModes);
         this.quickSettingsItems.push(this._menuToggle);
 
         // Clutter disposes actors from C during Shell shutdown, before any
@@ -105,6 +107,7 @@ export default class DisplayAndCastExtension extends Extension {
     enable() {
         this._client = null;
         this._presentation = null;
+        this._displayModes = null;
         this._indicator = null;
         this._keybindingAdded = false;
 
@@ -122,8 +125,14 @@ export default class DisplayAndCastExtension extends Extension {
         }
 
         try {
+            this._displayModes = new DisplayModeManager(this._client, this.getSettings());
+        } catch (e) {
+            _warn('Failed to init DisplayModeManager', e);
+        }
+
+        try {
             this._indicator = new CastDisplayIndicator(
-                this, this._client, this._presentation);
+                this, this._client, this._presentation, this._displayModes);
             Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
         } catch (e) {
             _warn('Failed to add the Quick Settings indicator', e);
@@ -163,6 +172,13 @@ export default class DisplayAndCastExtension extends Extension {
             _warn('Indicator destroy failed', e);
         }
         this._indicator = null;
+
+        try {
+            this._displayModes?.destroy();
+        } catch (e) {
+            _warn('DisplayModeManager destroy failed', e);
+        }
+        this._displayModes = null;
 
         try {
             this._presentation?.destroy();

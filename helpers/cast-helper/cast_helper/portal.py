@@ -191,6 +191,7 @@ class ScreenCastSession:
         path = self._request_path(token)
 
         def handler(_conn, _sender, _path, _iface, _signal, params):
+            LOG.debug("%s: Response on %s", method, _path)
             if self._cancelled:
                 return
             self._pending_request = None
@@ -205,6 +206,7 @@ class ScreenCastSession:
         )
         self._subscriptions.append(sub)
         self._pending_request = path
+        LOG.debug("%s: subscribed to %s", method, path)
 
         payload = GLib.Variant.new_tuple(
             *(list(args) if args is not None else []),
@@ -213,7 +215,8 @@ class ScreenCastSession:
 
         def on_call_done(conn, result):
             try:
-                conn.call_finish(result)
+                reply = conn.call_finish(result)
+                LOG.debug("%s accepted, request=%s", method, reply.unpack()[0])
             except GLib.Error as exc:
                 self._pending_request = None
                 self._fail(f"{method}: {exc.message}")

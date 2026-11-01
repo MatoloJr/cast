@@ -249,8 +249,29 @@ class Pipeline:
         fps = opts.fps
         encoder = encoder_settings(self._encoder_name, fps, opts.effective_bitrate())
 
+        # Extend needs an *exact* width and height immediately after
+        # pipewiresrc, and must not mention framerate.
+        #
+        # A portal VIRTUAL source has no inherent size: Mutter sizes the
+        # virtual monitor from whatever the consumer negotiates over
+        # PipeWire. Measured against xdg-desktop-portal-gnome 50 with a node
+        # advertising size min 1x1 / max 16384x16386:
+        #
+        #   width=[2,1920],height=[2,1080]          -> negotiates 2x2 (!)
+        #   width=1920,height=1080                  -> monitor becomes 1920x1080
+        #   width=1280,height=720                   -> monitor becomes 1280x720
+        #   width=1920,height=1080,framerate=30/1   -> negotiation FAILS
+        #   width=1920,height=1080,framerate=[1,60] -> negotiation FAILS
+        #
+        # So a range yields a useless 2x2 monitor, and any framerate
+        # constraint stops the pipeline from starting at all. videorate and
+        # the caps further down handle the frame rate instead.
+        request = ""
+        if opts.mode == config.MODE_EXTEND:
+            request = f" ! video/x-raw,width={max_width},height={max_height}"
+
         desc = (
-            f"{source} ! "
+            f"{source}{request} ! "
             f"videoconvert ! videoscale add-borders=true ! videorate ! "
             f"video/x-raw,format=NV12,"
             f"width=[2,{max_width},2],height=[2,{max_height},2],"

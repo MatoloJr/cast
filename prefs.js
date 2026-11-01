@@ -69,6 +69,26 @@ export default class CastDisplayPreferences extends ExtensionPreferences {
         }
         group.add(modeRow);
 
+        const positions = ['right', 'left', 'above', 'below'];
+        const positionRow = new Adw.ComboRow({
+            title: _('Place the extended display'),
+            subtitle: _('Where the display sits relative to your screens'),
+            model: Gtk.StringList.new([
+                _('To the right'), _('To the left'), _('Above'), _('Below'),
+            ]),
+        });
+        positionRow.selected = Math.max(0,
+            positions.indexOf(settings.get_string('cast-extend-position')));
+        positionRow.connect('notify::selected', () => {
+            settings.set_string('cast-extend-position',
+                positions[positionRow.selected] ?? 'right');
+        });
+        group.add(positionRow);
+
+        group.add(this._switchRow(settings, 'cast-display-only',
+            _('Turn off this computer\'s screens while extending'),
+            _('Like "Second screen only". Always confirmed with a 15 second timer that reverts if you do not answer.')));
+
         group.add(this._switchRow(settings, 'cast-auto-presentation',
             _('Presentation mode while casting'),
             _('Hide notification banners and keep the screen awake')));

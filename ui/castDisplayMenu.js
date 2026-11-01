@@ -170,7 +170,7 @@ class DeviceRow extends PopupMenu.PopupBaseMenuItem {
 
 export const CastDisplayMenuToggle = GObject.registerClass(
 class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
-    _init(extension, client, presentation) {
+    _init(extension, client, presentation, displayModes) {
         super._init({
             title: _('Cast Display'),
             iconName: 'video-display-symbolic',
@@ -181,10 +181,14 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         this._settings = extension.getSettings();
         this._client = client;
         this._presentation = presentation;
+        this._displayModes = displayModes ?? null;
         this._destroyed = false;
 
         this._rows = new Map();          // deviceId → DeviceRow
         this._selected = new Set();
+        this._localOnlyItems = [];
+        this._localSignature = '';
+        this._localScreensPending = false;
         this._syncing = false;
         this._lastNotifiedError = '';
 
@@ -251,7 +255,28 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         this._extendItem.connect('activate', () => this._onSetMode('extend'));
         this._modeItem.menu.addMenuItem(this._mirrorItem);
         this._modeItem.menu.addMenuItem(this._extendItem);
+
+        this._displayOnlyItem = new PopupMenu.PopupSwitchMenuItem(
+            _('Turn off this computer\'s screens'),
+            this._settings.get_boolean('cast-display-only'));
+        this._displayOnlyItem.connect('toggled', (_item, value) => {
+            this._settings.set_boolean('cast-display-only', value);
+        });
+        this._modeItem.menu.addMenuItem(this._displayOnlyItem);
         this.menu.addMenuItem(this._modeItem);
+
+        // Only meaningful with more than one physical screen, so it is
+        // added hidden and revealed once we know (see _syncLocalScreens).
+        this._localItem = new PopupMenu.PopupSubMenuMenuItem(
+            _('This computer\'s screens'));
+        this._localMirrorItem = new PopupMenu.PopupMenuItem(_('Mirror them'));
+        this._localMirrorItem.connect('activate', () => {
+            this._displayModes?.mirrorLocalScreens()
+                .catch(e => this._reportFailure(e));
+        });
+        this._localItem.menu.addMenuItem(this._localMirrorItem);
+        this._localItem.visible = false;
+        this.menu.addMenuItem(this._localItem);
 
         this._speakersItem = new PopupMenu.PopupSwitchMenuItem(
             _('Show speakers'), this._settings.get_boolean('cast-show-speakers'));
@@ -457,6 +482,7 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
             mode: streaming || sessions.length === 0,
         });
         this._syncModeChecks();
+        this._syncLocalScreens();
         this._syncTile(streaming || state === 'starting',
             this._subtitleFor(state, sessions));
         this._syncPresentation(streaming);
@@ -542,6 +568,48 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         this._actionSeparator.visible = connect || stop;
         const caps = this._client.capabilities;
         this._extendItem.sensitive = caps.virtual_source !== false;
+    }
+
+    _syncLocalScreens() {
+        if (!this._displayModes?.available || this._localScreensPending)
+            return;
+        this._localScreensPending = true;
+        this._displayModes.physicalMonitors().then(monitors => {
+            this._localScreensPending = false;
+            if (this._destroyed)
+                return;
+            // The brief: show local layout actions only when 2+ physical
+            // monitors exist. On a single-screen laptop they are no-ops.
+            this._localItem.visible = monitors.length >= 2;
+            if (monitors.length < 2)
+                return;
+            this._rebuildLocalScreenItems(monitors);
+        }).catch(() => {
+            this._localScreensPending = false;
+        });
+    }
+
+    _rebuildLocalScreenItems(monitors) {
+        const signature = monitors.map(m => m.connector).join(',');
+        if (signature === this._localSignature)
+            return;
+        this._localSignature = signature;
+
+        for (const item of this._localOnlyItems ?? [])
+            item.destroy();
+        this._localOnlyItems = [];
+
+        for (const monitor of monitors) {
+            const name = monitor.displayName || monitor.connector;
+            const item = new PopupMenu.PopupMenuItem(
+                `${_('Use only')} ${name}`);
+            item.connect('activate', () => {
+                this._displayModes?.useOnlyLocalScreen(monitor.connector)
+                    .catch(e => this._reportFailure(e));
+            });
+            this._localItem.menu.addMenuItem(item);
+            this._localOnlyItems.push(item);
+        }
     }
 
     _syncModeChecks() {

@@ -90,15 +90,23 @@ class StreamOptions:
         cls, options: dict[str, Any], hw_encode: bool = True
     ) -> "StreamOptions":
         opts = cls()
-        if not hw_encode and "max_height" not in options:
-            # Measured on the reference machine: 1080p30 through x264enc
-            # veryfast/zerolatency costs about 1.2 cores. 720p is the honest
-            # default without a hardware encoder; prefs can raise it.
-            opts.max_height = 720
         raw_mode = str(options.get("mode", opts.mode))
         if raw_mode not in (MODE_MIRROR, MODE_EXTEND):
             raise ValueError(f"unknown mode {raw_mode!r}")
         opts.mode = raw_mode
+
+        if "max_height" not in options:
+            if opts.mode == MODE_EXTEND:
+                # In extend mode this number *is* the size of the desktop the
+                # user gets on the receiver, so it stays at 1080p even on a
+                # software encoder. A 720p extended screen is cramped, and
+                # the cost is the user's to trade away in preferences.
+                opts.max_height = 1080
+            elif not hw_encode:
+                # Mirror on a software encoder: measured 1080p30 through
+                # x264enc veryfast/zerolatency costs about 1.2 cores, so
+                # 720p is the honest default. Prefs can raise it.
+                opts.max_height = 720
 
         raw_fmt = str(options.get("format", opts.fmt))
         if raw_fmt not in ALL_FORMATS:
