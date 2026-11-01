@@ -110,10 +110,10 @@ real TVs.
 ## Capabilities of the reference machine
 
 | Capability | Result |
-|---|---|
+| --- | --- |
 | ScreenCast portal version | 5 (≥4, so `persist_mode`/`restore_token` are available — fixes G5) |
-| `AvailableSourceTypes` | 7 = MONITOR \| WINDOW \| **VIRTUAL** → **Extend is genuinely possible here** (G1/Phase 4) |
-| `AvailableCursorModes` | 7 = HIDDEN \| EMBEDDED \| METADATA |
+| `AvailableSourceTypes` | 7 = MONITOR \ | WINDOW \ | **VIRTUAL** → **Extend is genuinely possible here** (G1/Phase 4) |
+| `AvailableCursorModes` | 7 = HIDDEN \ | EMBEDDED \ | METADATA |
 | H.264 encoder | `x264enc` only — **no VA-API** (`vah264enc`/`vaapih264enc` absent, `va` plugin present but exposes no encoder) |
 | fMP4 muxing | no `isofmp4mux`/`cmafmux` in GStreamer 1.28.2 here → the **ffmpeg `-c copy` remux path of Phase 2.2 is the one that will actually run** |
 | AAC encoder | `avenc_aac`, `voaacenc` (no `fdkaacenc`) |

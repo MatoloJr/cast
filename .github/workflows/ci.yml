@@ -1,0 +1,140 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Helper (ruff + pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          # python3-gi and the GStreamer plugins are needed because the tests
+          # build real pipelines and run a real encode, rather than mocking
+          # GStreamer. dbus-daemon and gdbus drive the service tests on a
+          # private session bus.
+          sudo apt-get install -y --no-install-recommends \
+            python3-gi python3-gi-cairo gir1.2-glib-2.0 gir1.2-gstreamer-1.0 \
+            gstreamer1.0-tools gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
+            gstreamer1.0-plugins-ugly gstreamer1.0-libav \
+            dbus dbus-x11 libglib2.0-bin ffmpeg
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          # --break-system-packages so pychromecast lands beside the distro's
+          # python3-gi; a venv would not see the system gi bindings.
+          python3 -m pip install --break-system-packages \
+            ruff pytest -r helpers/cast-helper/requirements.txt
+
+      - name: ruff
+        run: ruff check helpers/cast-helper
+
+      - name: Check the toolchain the tests rely on
+        run: |
+          python3 -c "import gi; gi.require_version('Gst','1.0'); from gi.repository import Gst; Gst.init(None); print('GStreamer', Gst.version_string())"
+          gst-inspect-1.0 x264enc > /dev/null && echo "x264enc present"
+          gst-inspect-1.0 matroskamux > /dev/null && echo "matroskamux present"
+          ffprobe -version | head -1
+
+      - name: Diagnostics
+        working-directory: helpers/cast-helper
+        env:
+          PYTHONPATH: .
+        # No portal, no PipeWire and no LAN on a runner, so --doctor will
+        # report failures. It is run for its output, not as a gate.
+        run: |
+          dbus-run-session -- python3 -m cast_helper --doctor --no-discovery || true
+
+      - name: pytest
+        working-directory: helpers/cast-helper
+        # The harness variables are deliberately NOT set here. The suite is
+        # hermetic (tests/conftest.py clears them) and the integration tests
+        # pass their own environment to the helper they start, so setting
+        # them globally only changed unit-test behaviour -- it broke four
+        # tests when this workflow was first written.
+        #
+        # The service tests start a private bus each, so they do not need an
+        # outer session bus; dbus-run-session gives the rest of the suite
+        # somewhere sane to look.
+        run: dbus-run-session -- python3 -m pytest tests/ -q
+
+  javascript:
+    name: Extension (eslint + node --test + schema)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libglib2.0-bin
+          npm install --no-save --no-audit --no-fund eslint@9
+
+      - name: eslint
+        run: npx eslint .
+
+      - name: Layout unit tests
+        run: node --test tests/layout.test.js
+
+      - name: Compile the GSettings schema
+        run: glib-compile-schemas --strict --dry-run schemas/
+
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libglib2.0-bin gnome-shell-extension-prefs jq unzip
+          # gnome-extensions ships with gnome-shell; install the CLI only.
+          sudo apt-get install -y --no-install-recommends gnome-shell-common || true
+
+      - name: Build the extension zip
+        run: |
+          glib-compile-schemas schemas/
+          if command -v gnome-extensions >/dev/null; then
+            make pack
+          else
+            # Fall back to zipping by hand so the job still proves the file
+            # set is complete and helper-free.
+            UUID=display-and-cast@cast.tools
+            zip -r "$UUID.shell-extension.zip" \
+              metadata.json extension.js prefs.js stylesheet.css LICENSE \
+              lib ui schemas -x '*.compiled'
+            if unzip -l "$UUID.shell-extension.zip" | grep -q 'helpers/'; then
+              echo "ERROR: the helper leaked into the zip" >&2
+              exit 1
+            fi
+            echo "Verified: no helper inside the zip"
+          fi
+
+      - name: Build the release tarball
+        run: make release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cast-display-packages
+          path: |
+            *.shell-extension.zip
+            cast-display-*.tar.gz
+          if-no-files-found: error

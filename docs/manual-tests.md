@@ -16,12 +16,12 @@ Record results inline. "Not run" is a useful answer; a guess is not.
 ## Environment for the run
 
 | Field | Value |
-|---|---|
-| Date | |
-| Distro / GNOME / session | |
-| Encoder (`--doctor`) | |
-| Receiver model(s) | |
-| Network (Wi-Fi / wired, AP model) | |
+| --- | --- |
+| Date |  |
+| Distro / GNOME / session |  |
+| Encoder (`--doctor`) |  |
+| Receiver model(s) |  |
+| Network (Wi-Fi / wired, AP model) |  |
 
 ## Checklist
 
@@ -190,7 +190,7 @@ Reference machine, `videotestsrc` through the full pipeline, one receiver,
 measured with `dev/measure_stream.sh`:
 
 | Encode | CPU (one core = 100%) | RSS | First frame | Lag behind live |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | 720p30, x264enc veryfast/zerolatency | **61%** | ~100 MB | 0.42 s | 0.13 s |
 | 1080p30, x264enc veryfast/zerolatency | **114–132%** | ~135 MB | 0.24 s | 1.20 s |
 

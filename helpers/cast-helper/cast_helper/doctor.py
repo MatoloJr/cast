@@ -16,7 +16,7 @@ import socket
 import subprocess
 import sys
 import time
-from typing import Any, Optional
+from typing import Any
 
 OK = "ok  "
 WARN = "warn"
@@ -26,7 +26,10 @@ FAIL = "FAIL"
 REQUIRED_ELEMENTS = ["pipewiresrc", "videoconvert", "videoscale", "videorate", "queue"]
 ENCODER_ELEMENTS = ["vah264enc", "vaapih264enc", "x264enc", "openh264enc"]
 MUX_ELEMENTS = ["h264parse", "mpegtsmux", "mp4mux", "isofmp4mux", "cmafmux", "hlssink2"]
-AUDIO_ELEMENTS = ["pulsesrc", "audioconvert", "audioresample", "fdkaacenc", "avenc_aac", "voaacenc", "aacparse"]
+AUDIO_ELEMENTS = [
+    "pulsesrc", "audioconvert", "audioresample",
+    "fdkaacenc", "avenc_aac", "voaacenc", "aacparse",
+]
 DEV_ELEMENTS = ["videotestsrc", "audiotestsrc", "appsink"]
 
 PORTAL_BUS = "org.freedesktop.portal.Desktop"
@@ -76,7 +79,7 @@ def _run(cmd: list[str], timeout: float = 5.0) -> tuple[int, str]:
         return 127, str(exc)
 
 
-def _load_gst() -> Optional[Any]:
+def _load_gst() -> Any | None:
     try:
         import gi
 
@@ -122,7 +125,7 @@ def check_system(report: Report) -> None:
     report.item(OK if runtime else FAIL, "XDG_RUNTIME_DIR", runtime or "unset")
 
 
-def check_gstreamer(report: Report, gst: Any) -> Optional[str]:
+def check_gstreamer(report: Report, gst: Any) -> str | None:
     report.section("GStreamer")
     if gst is None:
         report.item(FAIL, "gstreamer", "python-gi / Gst 1.0 not importable")
@@ -138,12 +141,15 @@ def check_gstreamer(report: Report, gst: Any) -> Optional[str]:
         present = _have(gst, element)
         if present and encoder is None:
             encoder = element
-        report.item(OK if present else WARN, element, "" if present else "missing")
+        report.item(OK if present else WARN, element,
+                    "" if present else "missing")
     if encoder is None:
-        report.item(FAIL, "h264 encoder", "none of " + ", ".join(ENCODER_ELEMENTS))
+        report.item(FAIL, "h264 encoder",
+                    "none of " + ", ".join(ENCODER_ELEMENTS))
     else:
         hw = encoder in ("vah264enc", "vaapih264enc")
-        report.item(OK, "encoder chosen", f"{encoder} ({'hardware' if hw else 'software'})")
+        kind = "hardware" if hw else "software"
+        report.item(OK, "encoder chosen", f"{encoder} ({kind})")
         if not hw:
             report.note("No VA-API H.264 encoder: 1080p30 will cost real CPU.")
 
@@ -163,7 +169,7 @@ def check_gstreamer(report: Report, gst: Any) -> Optional[str]:
     return encoder
 
 
-def check_encode(report: Report, gst: Any, encoder: Optional[str]) -> None:
+def check_encode(report: Report, gst: Any, encoder: str | None) -> None:
     """Actually encode a few frames, rather than trusting the registry."""
     report.section("Encode smoke test")
     if gst is None or encoder is None:
@@ -201,12 +207,14 @@ def check_ffmpeg(report: Report) -> None:
         report.item(FAIL, "ffmpeg", "not installed")
     else:
         code, out = _run([exe, "-version"])
-        report.item(OK if code == 0 else FAIL, "ffmpeg", out.splitlines()[0] if out else exe)
+        report.item(OK if code == 0 else FAIL, "ffmpeg",
+                    out.splitlines()[0] if out else exe)
     probe = shutil.which("ffprobe")
-    report.item(OK if probe else WARN, "ffprobe", probe or "not installed (dev harness needs it)")
+    report.item(OK if probe else WARN, "ffprobe",
+                probe or "not installed (dev harness needs it)")
 
 
-def _portal_props() -> Optional[dict[str, Any]]:
+def _portal_props() -> dict[str, Any] | None:
     try:
         import gi
 
@@ -239,12 +247,14 @@ def check_portal(report: Report) -> None:
     report.section("ScreenCast portal")
     props = _portal_props()
     if props is None:
-        report.item(FAIL, "org.freedesktop.portal.ScreenCast", "not reachable on the session bus")
+        report.item(FAIL, "org.freedesktop.portal.ScreenCast",
+                    "not reachable on the session bus")
         return
     version = int(props.get("version", 0))
     report.item(OK if version >= 4 else WARN, "portal version", str(version))
     if version < 4:
-        report.note("persist_mode/restore_token needs version 4+: expect a prompt every time.")
+        report.note("persist_mode/restore_token needs version 4+: "
+                    "expect a prompt every time.")
     sources = int(props.get("AvailableSourceTypes", 0))
     report.item(
         OK if sources & 1 else FAIL,
@@ -265,7 +275,8 @@ def check_network_displays(report: Report) -> None:
     report.section("Miracast (GNOME Network Displays)")
     exe = shutil.which("gnome-network-displays")
     if not exe:
-        report.item(WARN, "gnome-network-displays", "not installed (Miracast hand-off unavailable)")
+        report.item(WARN, "gnome-network-displays",
+                    "not installed (Miracast hand-off unavailable)")
         return
     version = ""
     code, out = _run(["dpkg-query", "-W", "-f=${Version}", "gnome-network-displays"])
@@ -289,7 +300,9 @@ def _interfaces() -> list[tuple[str, str]]:
                 name = link.get("ifname", "?")
                 for addr in link.get("addr_info", []):
                     if addr.get("family") == "inet":
-                        found.append((name, f"{addr.get('local')}/{addr.get('prefixlen')}"))
+                        found.append(
+                            (name,
+                             f"{addr.get('local')}/{addr.get('prefixlen')}"))
         except (ValueError, TypeError):
             pass
     if not found:
@@ -308,11 +321,13 @@ def check_network(report: Report) -> None:
     for name, addr in interfaces:
         loopback = addr.startswith("127.")
         report.item(OK if not loopback else WARN, f"iface {name}", addr)
-    virtual = [n for n, _ in interfaces if n.startswith(("docker", "virbr", "tun", "tap", "wg"))]
+    virtual = [n for n, _ in interfaces
+               if n.startswith(("docker", "virbr", "tun", "tap", "wg"))]
     if virtual:
         report.note(
-            "Virtual interfaces present (%s): the stream URL must be chosen per "
-            "receiver, not by routing to a public address." % ", ".join(virtual)
+            f"Virtual interfaces present ({', '.join(virtual)}): the stream "
+            "URL must be chosen per receiver, not by routing to a public "
+            "address."
         )
 
     ufw = shutil.which("ufw")
@@ -381,7 +396,8 @@ def check_devices(report: Report, seconds: float = 5.0) -> None:
         zconf.close()
 
     if not found:
-        report.item(WARN, "devices", "none found (check that mDNS/UDP 5353 reaches the LAN)")
+        report.item(WARN, "devices",
+                    "none found (check that mDNS/UDP 5353 reaches the LAN)")
         return
     for info in found.values():
         cast_type = getattr(info, "cast_type", "?")
@@ -394,7 +410,7 @@ def check_devices(report: Report, seconds: float = 5.0) -> None:
         )
 
 
-def run(argv: Optional[list[str]] = None) -> int:
+def run(argv: list[str] | None = None) -> int:
     argv = list(argv or [])
     discovery_seconds = 5.0
     if "--no-discovery" in argv:

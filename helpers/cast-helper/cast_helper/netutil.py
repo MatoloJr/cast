@@ -13,7 +13,7 @@ import errno
 import ipaddress
 import logging
 import socket
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 LOG = logging.getLogger("cast-helper.net")
 
@@ -69,7 +69,7 @@ def pick_port(port_range: tuple[int, int], bind_host: str = "0.0.0.0") -> int:
     cannot be allowed through in advance.
     """
     low, high = port_range
-    last_error: Optional[OSError] = None
+    last_error: OSError | None = None
     for port in range(low, high + 1):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:

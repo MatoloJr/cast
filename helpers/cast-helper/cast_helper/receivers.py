@@ -14,9 +14,10 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from dataclasses import dataclass
+from typing import Any
 
 from gi.repository import GLib
 
@@ -71,18 +72,20 @@ class _MediaListener:
             self._report(self._device_id, STATE_PLAYING, "")
         elif player_state == "BUFFERING":
             self._report(self._device_id, STATE_BUFFERING, "")
-        elif player_state == "IDLE":
-            # The user pressed Home, or another app took the receiver over.
-            if idle_reason in ("CANCELLED", "INTERRUPTED", "FINISHED", "ERROR"):
-                self._report(
-                    self._device_id, STATE_ERROR,
-                    {
-                        "CANCELLED": "stopped on the device",
-                        "INTERRUPTED": "another app took over the device",
-                        "FINISHED": "the device stopped playback",
-                        "ERROR": "the device could not play the stream",
-                    }[idle_reason],
-                )
+        # The user pressed Home, or another app took the receiver over.
+        elif player_state == "IDLE" and idle_reason in (
+            "CANCELLED", "INTERRUPTED", "FINISHED", "ERROR"
+        ):
+            self._report(
+                self._device_id,
+                STATE_ERROR,
+                {
+                    "CANCELLED": "stopped on the device",
+                    "INTERRUPTED": "another app took over the device",
+                    "FINISHED": "the device stopped playback",
+                    "ERROR": "the device could not play the stream",
+                }[idle_reason],
+            )
 
     def load_media_failed(self, item, error_code) -> None:
         self._report(

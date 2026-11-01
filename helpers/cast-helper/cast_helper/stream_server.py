@@ -19,7 +19,8 @@ from __future__ import annotations
 
 import logging
 import secrets
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 from gi.repository import Gio, GLib
 
@@ -43,9 +44,9 @@ class StreamServer:
         self.content_type = content_type
         self.token = secrets.token_hex(16)          # 128 bits
         self.port = netutil.pick_port(port_range)
-        self._service: Optional[Gio.SocketService] = None
+        self._service: Gio.SocketService | None = None
         self._allowed: set[str] = set()
-        self._on_client: Optional[Callable[[Gio.Socket], None]] = None
+        self._on_client: Callable[[Gio.Socket], None] | None = None
         # Keep connections referenced: multisocketsink writes to the fd, and
         # letting Python drop the GSocketConnection would close it underneath.
         self._handed_off: dict[int, Any] = {}
@@ -123,7 +124,8 @@ class StreamServer:
                 self._dispatch(connection, peer, bytes(buffer))
                 return
             if len(buffer) >= MAX_REQUEST_BYTES:
-                self._respond_and_close(connection, 431, "Request Header Fields Too Large")
+                self._respond_and_close(
+                    connection, 431, "Request Header Fields Too Large")
                 return
             input_stream.read_bytes_async(
                 MAX_REQUEST_BYTES, GLib.PRIORITY_DEFAULT, None, on_read
@@ -209,7 +211,7 @@ class StreamServer:
         connection: Gio.SocketConnection,
         code: int,
         reason: str,
-        extra: Optional[list[str]] = None,
+        extra: list[str] | None = None,
     ) -> None:
         headers = list(extra or [])
         headers.append("Content-Length: 0")

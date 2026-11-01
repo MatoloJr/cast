@@ -27,6 +27,8 @@ for arg in "$@"; do
   esac
 done
 
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/cast-display"
+
 uninstall_all() {
   echo "==> Uninstalling Cast Display"
   gnome-extensions disable "$UUID" 2>/dev/null || true
@@ -34,11 +36,94 @@ uninstall_all() {
   rm -f "$UNIT_DIR/cast-helper.service"
   rm -f "$DBUS_DIR/org.cast.tools.Cast1.service"
   rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/cast-display"
+  rm -rf "${XDG_RUNTIME_DIR:-/tmp}/cast-display"
+
+  # The saved screen-share restore token lives here. Removing it means the
+  # portal will ask for permission again after a reinstall, which is the
+  # right default for an uninstall.
+  if [[ -d "$STATE_DIR" ]]; then
+    rm -rf "$STATE_DIR"
+    echo "    Removed saved screen-share permission ($STATE_DIR)"
+  fi
+
   if [[ -L "$EXT_DIR" || -d "$EXT_DIR" ]]; then
     rm -rf "$EXT_DIR"
   fi
   systemctl --user daemon-reload 2>/dev/null || true
+
+  remove_firewall_rule
   echo "Done. Log out and back in on Wayland to finish unloading the extension."
+}
+
+# -- firewall --------------------------------------------------------------
+
+PORT_MIN=8765
+PORT_MAX=8775
+
+lan_subnet() {
+  ip -o -f inet addr show scope global 2>/dev/null \
+    | awk '{print $4}' \
+    | grep -vE '^(172\.1[6-9]|172\.2[0-9]|172\.3[01])\.' \
+    | head -1
+}
+
+offer_firewall_rule() {
+  command -v ufw >/dev/null 2>&1 || return 0
+  # `ufw status` needs root; if we cannot read it, say so rather than guess.
+  local status
+  if ! status="$(sudo -n ufw status 2>/dev/null)"; then
+    echo "==> Firewall: could not read ufw status without a password."
+    echo "    If ufw is active, the receivers need this port range opened:"
+    print_firewall_command
+    return 0
+  fi
+  if ! grep -q "Status: active" <<<"$status"; then
+    echo "==> Firewall: ufw is installed but inactive; nothing to open."
+    return 0
+  fi
+  if grep -q "$PORT_MIN:$PORT_MAX" <<<"$status"; then
+    echo "==> Firewall: the Cast Display rule is already present."
+    return 0
+  fi
+
+  echo "==> Firewall: ufw is active, so receivers cannot reach the stream."
+  print_firewall_command
+  if [[ ! -t 0 ]]; then
+    echo "    Not a terminal, so not changing the firewall. Run the command above."
+    return 0
+  fi
+  read -r -p "    Add this rule now? [y/N] " answer
+  if [[ "${answer,,}" == "y" ]]; then
+    local subnet
+    subnet="$(lan_subnet)"
+    sudo ufw allow from "${subnet:-192.168.0.0/16}" to any \
+      port "$PORT_MIN:$PORT_MAX" proto tcp comment 'Cast Display' \
+      && echo "    Rule added." || echo "    Could not add the rule."
+  else
+    echo "    Skipped."
+  fi
+}
+
+print_firewall_command() {
+  local subnet
+  subnet="$(lan_subnet)"
+  echo "      sudo ufw allow from ${subnet:-192.168.0.0/16} to any \\"
+  echo "        port $PORT_MIN:$PORT_MAX proto tcp comment 'Cast Display'"
+}
+
+remove_firewall_rule() {
+  command -v ufw >/dev/null 2>&1 || return 0
+  sudo -n ufw status 2>/dev/null | grep -q "Cast Display" || return 0
+  echo "==> A ufw rule for Cast Display is still present."
+  echo "      sudo ufw delete allow from any to any port $PORT_MIN:$PORT_MAX proto tcp"
+  if [[ -t 0 ]]; then
+    read -r -p "    Remove it now? [y/N] " answer
+    if [[ "${answer,,}" == "y" ]]; then
+      sudo ufw --force delete allow "$PORT_MIN:$PORT_MAX/tcp" \
+        >/dev/null 2>&1 || true
+      echo "    Removed (verify with: sudo ufw status)."
+    fi
+  fi
 }
 
 install_helper() {
@@ -142,9 +227,16 @@ if [[ "$HELPER_ONLY" -eq 0 ]]; then
   install_extension
 fi
 
+offer_firewall_rule
+
 echo
 echo "Install complete."
-echo "  On Wayland: log out and log back in so Quick Settings reloads."
+if [[ "${XDG_SESSION_TYPE:-}" == "wayland" ]]; then
+  echo "  On Wayland the Shell cannot reload itself, so log out and back in"
+  echo "  for the tile to appear. The helper is already running; no reboot."
+else
+  echo "  On X11 press Alt+F2, type r, and press Enter to reload the Shell."
+fi
 echo "  Then open Quick Settings → Cast Display → Connect."
 echo "  Helper logs: journalctl --user -u cast-helper.service -f"
 echo "  List devices: gdbus call --session -d org.cast.tools.Cast1 \\"

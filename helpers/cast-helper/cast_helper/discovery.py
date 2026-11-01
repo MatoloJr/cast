@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, replace
-from typing import Any, Callable, Optional
+from typing import Any
 
 from . import dev_harness
 
@@ -54,7 +55,7 @@ class Device:
         }
 
 
-def classify(cast_type: Optional[str], port: int) -> tuple[str, bool]:
+def classify(cast_type: str | None, port: int) -> tuple[str, bool]:
     """(cast_type, video_capable) from what mDNS actually gave us.
 
     This is a **deny-list**, deliberately. pychromecast only fills `cast_type`
@@ -213,11 +214,11 @@ class Discovery:
         with self._lock:
             return dict(self._devices)
 
-    def get(self, device_id: str) -> Optional[Device]:
+    def get(self, device_id: str) -> Device | None:
         with self._lock:
             return self._devices.get(device_id)
 
-    def cast_info(self, device_id: str) -> Optional[Any]:
+    def cast_info(self, device_id: str) -> Any | None:
         """The raw pychromecast CastInfo, needed to build a Chromecast."""
         browser = self._browser
         if browser is None:

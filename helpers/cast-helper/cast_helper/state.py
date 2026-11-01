@@ -20,8 +20,8 @@ deadlock while the portal dialog was open.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from enum import Enum
-from typing import Callable, Optional
 
 LOG = logging.getLogger("cast-helper.state")
 
@@ -105,7 +105,7 @@ class StateMachine:
     callback is main-thread too.
     """
 
-    def __init__(self, on_change: Optional[Callable[[State, Step, str], None]] = None):
+    def __init__(self, on_change: Callable[[State, Step, str], None] | None = None):
         self._state = State.IDLE
         self._step = Step.NONE
         self._error = ""

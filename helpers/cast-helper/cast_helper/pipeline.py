@@ -22,7 +22,8 @@ Two decisions worth stating:
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 import gi
 
@@ -67,7 +68,7 @@ def available_encoders() -> list[str]:
     return [name for name, _ in ENCODERS if have(name)]
 
 
-def pick_encoder() -> Optional[tuple[str, str]]:
+def pick_encoder() -> tuple[str, str] | None:
     """First encoder present in the registry. Presence, not proof."""
     for name, kind in ENCODERS:
         if have(name):
@@ -75,10 +76,10 @@ def pick_encoder() -> Optional[tuple[str, str]]:
     return None
 
 
-_verified: Optional[tuple[str, str, str]] = None
+_verified: tuple[str, str, str] | None = None
 
 
-def select_working_encoder(force: bool = False) -> Optional[tuple[str, str, str]]:
+def select_working_encoder(force: bool = False) -> tuple[str, str, str] | None:
     """First encoder that actually encodes, as (name, kind, note).
 
     A present element is not a working element: VA-API is routinely installed
@@ -183,16 +184,16 @@ class Pipeline:
         init_gst()
         self._options = options
         self._on_error = on_error
-        self._pipeline: Optional[Gst.Element] = None
-        self._sink: Optional[Gst.Element] = None
-        self._bus_watch: Optional[int] = None
-        self._owned_fd: Optional[int] = None
+        self._pipeline: Gst.Element | None = None
+        self._sink: Gst.Element | None = None
+        self._bus_watch: int | None = None
+        self._owned_fd: int | None = None
         self._encoder_name = ""
         self._encoder_kind = ""
         self._encoder_note = ""
         self._clients = 0
         self._last_buffer = 0.0
-        self._watchdog: Optional[int] = None
+        self._watchdog: int | None = None
         self._failed = False
         self._audio_enabled = False
         self._mute = audio.LocalMute() if options.mute_local else None

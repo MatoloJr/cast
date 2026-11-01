@@ -39,7 +39,7 @@ StopAll
 Checks against the exit criteria:
 
 | Criterion | Result |
-|---|---|
+| --- | --- |
 | Extension loads and reaches ACTIVE | yes |
 | Devices appear without flicker | rows are kept in a `Map` and updated in place; `destroy_all_children` is gone from the codebase |
 | Connect → states progress to Playing | both sessions reached `playing` |

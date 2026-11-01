@@ -65,7 +65,7 @@ EnumFormat size: {default: 1280x720, min: 1x1, max: 16384x16386}
 Measured, with the caps filter placed immediately after `pipewiresrc`:
 
 | Caps after `pipewiresrc` | Negotiated | Monitor Mutter creates |
-|---|---|---|
+| --- | --- | --- |
 | *(none)* | — | `set_state` **FAILURE** |
 | `width=[2,1920],height=[2,1080]` | 2×2 | **`2x2@60`** — useless |
 | `width=1920,height=1080` | 1920×1080 | **`1920x1080@60`** ✓ |

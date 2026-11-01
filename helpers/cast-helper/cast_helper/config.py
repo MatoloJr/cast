@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 BUS_NAME = "org.cast.tools.Cast1"
@@ -90,7 +90,7 @@ class StreamOptions:
     @classmethod
     def from_variant(
         cls, options: dict[str, Any], hw_encode: bool = True
-    ) -> "StreamOptions":
+    ) -> StreamOptions:
         opts = cls()
         raw_mode = str(options.get("mode", opts.mode))
         if raw_mode not in (MODE_MIRROR, MODE_EXTEND):
@@ -119,7 +119,8 @@ class StreamOptions:
         opts.mute_local = bool(options.get("mute_local", opts.mute_local))
         opts.audio_delay_ms = max(-2000, min(2000, int(
             options.get("audio_delay_ms", 0))))
-        opts.max_height = max(480, min(2160, int(options.get("max_height", opts.max_height))))
+        opts.max_height = max(480, min(2160, int(
+            options.get("max_height", opts.max_height))))
         opts.fps = max(10, min(60, int(options.get("fps", opts.fps))))
         opts.bitrate_kbps = max(0, min(50000, int(options.get("bitrate_kbps", 0))))
 

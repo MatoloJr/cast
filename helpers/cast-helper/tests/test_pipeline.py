@@ -6,7 +6,6 @@ import pytest
 
 from cast_helper import audio, config, pipeline
 
-
 # -- encoder settings ------------------------------------------------------
 
 

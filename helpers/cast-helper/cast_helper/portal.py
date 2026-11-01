@@ -21,7 +21,7 @@ import json
 import logging
 import os
 import uuid
-from typing import Any, Callable, Optional
+from collections.abc import Callable
 
 from gi.repository import Gio, GLib
 
@@ -85,17 +85,17 @@ class ScreenCastSession:
     def __init__(self, bus: Gio.DBusConnection):
         self._bus = bus
         self._sender = bus.get_unique_name()[1:].replace(".", "_")
-        self._session_handle: Optional[str] = None
-        self._pending_request: Optional[str] = None
+        self._session_handle: str | None = None
+        self._pending_request: str | None = None
         self._subscriptions: list[int] = []
-        self._closed_subscription: Optional[int] = None
+        self._closed_subscription: int | None = None
         self._cancelled = False
         self._mode = config.MODE_MIRROR
-        self._on_ready: Optional[Callable[[int, int], None]] = None
-        self._on_error: Optional[Callable[[PortalError], None]] = None
-        self._on_closed: Optional[Callable[[], None]] = None
-        self._fd: Optional[int] = None
-        self._node_id: Optional[int] = None
+        self._on_ready: Callable[[int, int], None] | None = None
+        self._on_error: Callable[[PortalError], None] | None = None
+        self._on_closed: Callable[[], None] | None = None
+        self._fd: int | None = None
+        self._node_id: int | None = None
 
     # -- public ------------------------------------------------------------
 
@@ -104,7 +104,7 @@ class ScreenCastSession:
         mode: str,
         on_ready: Callable[[int, int], None],
         on_error: Callable[[PortalError], None],
-        on_closed: Optional[Callable[[], None]] = None,
+        on_closed: Callable[[], None] | None = None,
     ) -> None:
         self._mode = mode
         self._on_ready = on_ready
@@ -151,7 +151,7 @@ class ScreenCastSession:
         self._fd = None
 
     @property
-    def node_id(self) -> Optional[int]:
+    def node_id(self) -> int | None:
         return self._node_id
 
     # -- internals ---------------------------------------------------------
@@ -382,7 +382,7 @@ class FakePortal:
         self.never_answers = never_answers
         self.cancelled = False
         self.node_id = 0
-        self._timeout: Optional[int] = None
+        self._timeout: int | None = None
 
     def start(self, mode, on_ready, on_error, on_closed=None) -> None:
         if self.never_answers:

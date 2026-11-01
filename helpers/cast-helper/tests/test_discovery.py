@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 from uuid import UUID
 
 from cast_helper import discovery
@@ -27,20 +26,20 @@ class FakeCastInfo:
     friendly_name: str
     host: str
     port: int
-    cast_type: Optional[str]
-    manufacturer: Optional[str]
+    cast_type: str | None
+    manufacturer: str | None
 
 
 def info(**overrides):
-    base = dict(
-        uuid=UUID("84a96440-d63a-1f8a-222a-25adbd7ea018"),
-        model_name="Smart TV",
-        friendly_name="Smart TV",
-        host="192.168.100.13",
-        port=8009,
-        cast_type=None,
-        manufacturer=None,
-    )
+    base = {
+        "uuid": UUID("84a96440-d63a-1f8a-222a-25adbd7ea018"),
+        "model_name": "Smart TV",
+        "friendly_name": "Smart TV",
+        "host": "192.168.100.13",
+        "port": 8009,
+        "cast_type": None,
+        "manufacturer": None,
+    }
     base.update(overrides)
     return FakeCastInfo(**base)
 

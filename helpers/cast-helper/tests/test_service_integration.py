@@ -12,7 +12,6 @@ the request and never answers.
 
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import signal
@@ -43,7 +42,7 @@ class Helper:
         self.extra_args = extra_args
         self.fake_devices = fake_devices
 
-    def __enter__(self) -> "Helper":
+    def __enter__(self) -> Helper:
         self.bus_proc = subprocess.Popen(
             ["dbus-daemon", "--session", "--print-address", "--nofork"],
             stdout=subprocess.PIPE,

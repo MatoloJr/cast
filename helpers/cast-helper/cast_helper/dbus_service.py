@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 import secrets
 import time
-from typing import Any, Optional
+from typing import Any
 
 from gi.repository import Gio, GLib
 
@@ -83,9 +83,9 @@ class Stream:
         self.options = options
         self.started_at = int(time.time())
         self.portal: Any = None
-        self.pipeline: Optional[pipeline.Pipeline] = None
+        self.pipeline: pipeline.Pipeline | None = None
         self.server: Any = None
-        self.grace_timeout: Optional[int] = None
+        self.grace_timeout: int | None = None
 
     def to_variant_dict(self, receiver_ids: list[str]) -> dict[str, Any]:
         return {
@@ -108,7 +108,7 @@ class CastService:
         self._registration_id = 0
 
         self._state = StateMachine(on_change=self._on_state_change)
-        self._stream: Optional[Stream] = None
+        self._stream: Stream | None = None
         self._capabilities = pipeline.capabilities()
 
         self._discovery = discovery.Discovery(on_changed=self._on_devices_changed)
@@ -177,7 +177,7 @@ class CastService:
         ids = [s.device_id for s in self._receivers.sessions]
         return GLib.Variant("aa{sv}", [_pack(self._stream.to_variant_dict(ids))])
 
-    def _handle_get(self, _conn, _sender, _path, _iface, name) -> Optional[GLib.Variant]:
+    def _handle_get(self, _conn, _sender, _path, _iface, name) -> GLib.Variant | None:
         if name == "ApiVersion":
             return GLib.Variant("u", config.API_VERSION)
         if name == "State":
@@ -398,7 +398,8 @@ class CastService:
         stream.portal.start(stream.options.mode, on_ready, on_error, on_closed)
         return False
 
-    def _begin_pipeline(self, generation: int, devices: list, fd: int, node_id: int) -> None:
+    def _begin_pipeline(self, generation: int, devices: list,
+                        fd: int, node_id: int) -> None:
         if generation != self._state.generation or self._stream is None:
             return
         stream = self._stream

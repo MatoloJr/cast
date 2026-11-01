@@ -21,7 +21,6 @@ from __future__ import annotations
 import logging
 import shutil
 import subprocess
-from typing import Optional
 
 LOG = logging.getLogger("cast-helper.audio")
 
@@ -42,7 +41,7 @@ def _have(element: str) -> bool:
     return have(element)
 
 
-def pick_encoder() -> Optional[tuple[str, str]]:
+def pick_encoder() -> tuple[str, str] | None:
     """(element name, launch fragment) for the first AAC encoder present."""
     for name, fragment in AAC_ENCODERS:
         if _have(name):
@@ -56,7 +55,7 @@ def available() -> bool:
     )
 
 
-def source_description() -> Optional[str]:
+def source_description() -> str | None:
     """A launch fragment capturing the default output.
 
     Returns None when no usable capture element exists.
@@ -74,7 +73,7 @@ def source_description() -> Optional[str]:
     return None
 
 
-def branch_description(delay_ms: int = 0) -> Optional[str]:
+def branch_description(delay_ms: int = 0) -> str | None:
     """The whole audio branch, ending in `mux.`
 
     `delay_ms` above zero holds the audio back; the video side is delayed
@@ -112,7 +111,7 @@ def video_delay_description(delay_ms: int) -> str:
 # -- the local mute switch -------------------------------------------------
 
 
-def _mute_command(mute: bool) -> Optional[list[str]]:
+def _mute_command(mute: bool) -> list[str] | None:
     if shutil.which("wpctl"):
         return ["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "1" if mute else "0"]
     if shutil.which("pactl"):
@@ -120,7 +119,7 @@ def _mute_command(mute: bool) -> Optional[list[str]]:
     return None
 
 
-def is_muted() -> Optional[bool]:
+def is_muted() -> bool | None:
     """Current mute state of the default output, or None if unknown."""
     if shutil.which("wpctl"):
         try:
@@ -174,7 +173,7 @@ class LocalMute:
 
     def __init__(self) -> None:
         self._engaged = False
-        self._was_muted: Optional[bool] = None
+        self._was_muted: bool | None = None
 
     def engage(self) -> None:
         if self._engaged:

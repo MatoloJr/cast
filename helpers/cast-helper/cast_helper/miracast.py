@@ -13,7 +13,6 @@ from __future__ import annotations
 import logging
 import shutil
 import subprocess
-from typing import Optional
 
 LOG = logging.getLogger("cast-helper.miracast")
 

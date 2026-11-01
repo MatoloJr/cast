@@ -22,7 +22,7 @@ import logging
 import os
 import subprocess
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 LOG = logging.getLogger("cast-helper.dev")
 
@@ -158,7 +158,7 @@ def probe_url(url: str, seconds: int = 5, timeout: float = 25.0) -> tuple[bool, 
     return True, detail
 
 
-def describe() -> Optional[str]:
+def describe() -> str | None:
     if not enabled():
         return None
     bits = []

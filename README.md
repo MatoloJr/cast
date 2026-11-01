@@ -1,255 +1,204 @@
 # Cast Display
 
-**Cast Display** is a GNOME Shell Quick Settings extension for Ubuntu / GNOME 45+ (Wayland) that combines:
+Cast your screen to Chromecast and Google TV displays from GNOME's Quick
+Settings. Pick one display or several, mirror an existing screen or extend
+your desktop onto the TV, and hand off to GNOME Network Displays for
+Miracast.
 
-1. **Wireless casting** Chromecast smart TVs **and** Miracast wireless displays
-2. **Multi-device connect** select one or many Chromecasts and share one stream
-3. **Project layouts** Mirror, Extend, Main only, Secondary only (after you connect)
+One encode is fanned out to every receiver, so a second television costs
+network bandwidth rather than another encoder.
 
-One Quick Settings tile. One install command. Turn the tile **on**, open the menu, pick devices, **Connect**.
-
----
-
-## Quick start (recommended)
-
-```bash
-git clone https://github.com/MatoloJr/cast.git
-cd cast
-chmod +x install.sh
-./install.sh
-```
-
-Then **log out and log back in** (required on Wayland).
-
-Open the system menu (top right) → turn **Cast Display** **on** → open the menu (`>`) → select devices → **Connect**.
-
-```bash
-make uninstall   # remove extension + helper
-```
-
----
-
-
+> **Status.** Everything described below has been exercised end to end on
+> Ubuntu 26.04 / GNOME Shell 50.1 with the development harness, and the
+> display and portal behaviour on real hardware. The items in
+> [docs/manual-tests.md](docs/manual-tests.md) marked *needs hardware* —
+> above all **a picture on a real television** — have not been confirmed
+> yet. Nothing here is described as working on a TV that has not been seen
+> working on one; read [docs/format-spike.md](docs/format-spike.md) before
+> trusting the format choice.
 
 ## What it does
 
+|  |  |
+| --- | --- |
+| **Mirror** | Share an existing screen. The portal asks which one. |
+| **Extend** | Create a virtual monitor for the TV, so it is a second desktop you can drag windows onto. It appears in Settings → Displays. |
+| **TV only** | Extend, then switch this computer's screens off, with a 15 second "keep these settings?" timer that reverts if you do not answer. |
+| **Several receivers** | Select more than one, or add one mid-stream without re-prompting and without interrupting the others. |
+| **Audio** | Send what the computer is playing, with an A/V offset control and an optional "mute this computer while casting". |
+| **Miracast** | One row that opens GNOME Network Displays, or offers to install it. |
 
-| Feature                  | Behavior                                                                   |
-| ------------------------ | -------------------------------------------------------------------------- |
-| **Tile on/off**          | Primary click activates discovery; off stops casting and hides devices     |
-| **Connect (1 device)**   | Normal features: Mirror / Extend / Main only / Secondary only              |
-| **Connect (2+ devices)** | Advanced features: per-device modes + Manage (mirror all / group)          |
-| **Mirror all**           | Local displays mirrored; Chromecasts share the same stream                 |
-| **Custom groups**        | Manage: group connected sinks; 3+ local monitors can be grouped too        |
-| **Connect (Chromecast)** | Portal screen share → encode → LAN HTTP MPEG-TS → TV(s)                    |
-| **Connect (Miracast)**   | Opens **gnome-network-displays** (single device; not multi-select)         |
-| **Auto presentation**    | While casting, optionally inhibits idle and hides banners (no menu toggle) |
-
-
-Display layouts use Mutter `org.gnome.Mutter.DisplayConfig` (not `xrandr`). Casting runs in a session helper over D-Bus so the Shell stays unload-safe.
-
----
-
-
-
-## Compared to Windows Cast (Win+K)
-
-
-| Windows                            | Cast Display on Linux                                           |
-| ---------------------------------- | --------------------------------------------------------------- |
-| Win+K opens Cast flyout            | Turn on **Cast Display**, open the menu                         |
-| Auto-scans Miracast receivers      | Auto-scans when on + menu open; continuous Chromecast discovery |
-| Click device to connect            | Select device(s) → **Connect** / **Disconnect**                 |
-| Miracast (Wi‑Fi Direct)            | Miracast via **gnome-network-displays** (soft dependency)       |
-| Duplicate / Extend / Second screen | Layout features after connect (Mutter logical monitors)         |
-| Smart TV Cast apps                 | Chromecast protocol (including multi-TV mirror)                 |
-
-
-**Note:** Windows Cast is primarily **Miracast**. Many TVs in East Africa also speak **Google Cast**. Cast Display covers both paths in one list (with a protocol badge: *Cast* vs *Wireless display*).
-
----
-
-
-
-## Architecture
-
-```text
-GNOME Shell Quick Settings
-  └─ Cast Display tile (on/off + menu)
-       ├─ Mutter DisplayConfig     → layouts / grouping (after connect)
-       ├─ SessionManager inhibit   → auto presentation while casting
-       └─ org.cast.tools.Cast1     → cast-helper (systemd --user)
-            ├─ pychromecast        → Chromecast discover + play_media (N devices)
-            ├─ xdg-desktop-portal  → PipeWire screen capture
-            ├─ GStreamer / ffmpeg  → H.264 MPEG-TS over LAN HTTP
-            └─ gnome-network-displays → Miracast UI (optional)
-```
-
----
-
-
+While casting, a cast icon appears in the top bar with the receiver count,
+and notification banners can be hidden automatically.
 
 ## Requirements
 
-- **GNOME Shell 45–50** (tested on Shell 50 / Ubuntu 26.04)
-- **Wayland** session (recommended)
-- Same LAN as your TV / wireless display (guest Wi‑Fi isolation breaks discovery)
-- For Chromecast: helper deps (installed by `./install.sh`)
-- For Miracast: `sudo apt install gnome-network-displays`
+- GNOME Shell 45–50. Developed and verified on **50.1**, Wayland.
+- PipeWire and a working `xdg-desktop-portal` with the ScreenCast interface.
+  Portal version 4+ is needed to avoid a permission prompt on every connect;
+  **Extend additionally needs the portal to offer the `VIRTUAL` source
+  type**, which `--doctor` reports.
+- An H.264 encoder GStreamer can use. VA-API (`vah264enc`) if you have it,
+  otherwise `x264enc`.
+- Python 3.9+ with PyGObject, and `ffmpeg` for the diagnostics.
 
----
-
-
-
-## Installation options
-
-
-
-### A. Clone + `./install.sh` (best)
-
-Installs the extension (symlink into `~/.local/share/gnome-shell/extensions/`) **and** the cast helper (venv + systemd user unit + D-Bus activation).
+## Install
 
 ```bash
+git clone https://github.com/MatoloJr/cast
+cd cast
 ./install.sh
-./install.sh --helper-only   # helper only
-./install.sh --uninstall
 ```
 
-Or: `make install` / `make helper` / `make uninstall`.
+Then **log out and back in**. On Wayland the Shell cannot reload itself, so
+the tile will not appear until the session restarts. No reboot is needed, and
+the helper starts immediately.
 
-### B. GitHub Release zip
-
-1. Download `display-and-cast@cast.tools.shell-extension.zip` from [Releases](https://github.com/MatoloJr/cast/releases).
-2. Extract or `gnome-extensions install --force` the zip.
-3. From the extracted tree (or a clone), run `./install.sh --helper-only`.
-4. Log out / in and enable the extension if needed.
-
-
-
-### C. Pack from source
+The installer puts the extension in
+`~/.local/share/gnome-shell/extensions/`, the helper and its virtualenv in
+`~/.local/share/cast-display/`, and a systemd user unit that starts with the
+graphical session. It also offers to add a `ufw` rule if your firewall is
+active, printing the command either way rather than changing anything
+silently.
 
 ```bash
-make pack
-# → display-and-cast@cast.tools.shell-extension.zip
+./install.sh --helper-only   # just the Python side
+./install.sh --uninstall     # remove everything, including the saved
+                             # screen-share permission
 ```
 
-**Why not Flatpak?** GNOME Shell extensions must load inside the host Shell process. A one-shot user install script + Release zip is the right distribution model.
+## Using it
 
----
+Quick Settings → **Cast Display**. The chevron opens the menu; tick one or
+more displays and press **Connect**. The tile turns off the cast.
 
+`Super`+`K` opens the menu. Everything else lives in the preferences:
+mode, resolution, frame rate, bitrate, audio, port range and the shortcut.
 
+## If something goes wrong
 
-## Usage
-
-1. Open **Quick Settings** (top-right system menu).
-2. Click the **Cast Display** tile to turn it **on**.
-3. Open the menu with `>`.
-4. Select one or more devices (Miracast is exclusive), then **Connect** (or **Connect (N)**).
-5. Approve the **screen share** portal (Chromecast path).
-6. **One device:** use Mirror / Extend / Main only / Secondary only.
-7. **Multiple devices:** use per-device modes or **Manage** (Mirror all / group).
-8. **Disconnect** a device or turn the tile **off** when finished.
-
-**Miracast row** (“Wireless displays”) opens GNOME Network Displays pick the receiver there (PIN / Wi‑Fi Direct as required by the TV).
-
-Presentation mode can auto-enable while casting (`cast-auto-presentation` GSettings key, default `true`). There is no presentation toggle in the menu.
-
----
-
-
-
-## Troubleshooting
-
-
-| Symptom                   | Fix                                                                     |
-| ------------------------- | ----------------------------------------------------------------------- |
-| No Cast Display tile      | Log out/in; `gnome-extensions enable display-and-cast@cast.tools`       |
-| Menu empty / “is off”     | Click the tile to turn Cast Display **on**                              |
-| “Cast helper not running” | `./install.sh --helper-only` then `systemctl --user status cast-helper` |
-| No Chromecast devices     | Same Wi‑Fi (not guest); disable VPN; `Refresh` / reopen menu            |
-| TV connects then black    | Firewall: allow inbound TCP to the ephemeral stream port from the TV    |
-| Portal cancelled          | Approve Screen Share when prompted                                      |
-| No Miracast row           | `sudo apt install gnome-network-displays`                               |
-| Multi-connect fails       | Restart helper after upgrade: `systemctl --user restart cast-helper`    |
-| Audio missing             | Phase 3 is **video only** (see roadmap)                                 |
-
-
-
-
-### Logs
+Start here. It checks everything the helper depends on and tells you what is
+missing:
 
 ```bash
-jsournalctl -f -o cat /usr/bin/gnome-shell | grep -i display-and-cast
+~/.local/share/cast-display/cast-helper/venv/bin/python -m cast_helper --doctor
+```
+
+A sample of its output on a healthy machine is in
+[docs/doctor-sample.txt](docs/doctor-sample.txt).
+
+| Symptom | What `--doctor` shows | What to do |
+| --- | --- | --- |
+| The tile never appears | — | Log out and back in; check `gnome-extensions info display-and-cast@cast.tools` |
+| "The cast helper is not running" | — | `systemctl --user status cast-helper.service`, then `journalctl --user -u cast-helper.service -f` |
+| "Helper outdated: run ./install.sh" | — | The extension was updated but the helper was not. Re-run `./install.sh` |
+| No displays listed | `devices: none found` | mDNS is not reaching the LAN. Check that UDP 5353 is not blocked and that you are not on a guest network with client isolation |
+| The TV connects, then goes black | `encoder chosen: …` is fine | Almost certainly the receiver refusing the stream format. Run `helpers/cast-helper/dev/spike_formats.py --device "<name>"` and add the result to [docs/format-spike.md](docs/format-spike.md) |
+| "No video encoder is available" | `[FAIL] h264 encoder` | `sudo apt install gstreamer1.0-plugins-ugly gstreamer1.0-plugins-bad` |
+| Casting works but the TV shows nothing | `ufw: active` | Open the stream ports: `sudo ufw allow from <your subnet> to any port 8765:8775 proto tcp` |
+| Extend only mirrors | `AvailableSourceTypes` without `VIRTUAL` | Your portal cannot create a virtual monitor. Mirror is all that is available |
+| Audio switch is greyed out | `[FAIL] audio` | No AAC encoder: `sudo apt install gstreamer1.0-libav` |
+| Wrong network interface used | several `iface` lines | The stream URL is chosen per receiver, so this should not happen; if it does, file it with the `--doctor` output |
+
+Useful commands:
+
+```bash
 journalctl --user -u cast-helper.service -f
+
 gdbus call --session -d org.cast.tools.Cast1 -o /org/cast/tools/Cast1 \
-  -m org.cast.tools.Cast1.ListDevice
+  -m org.freedesktop.DBus.Properties.Get org.cast.tools.Cast1 Devices
+
+gdbus call --session -d org.cast.tools.Cast1 -o /org/cast/tools/Cast1 \
+  -m org.cast.tools.Cast1.StopAll
 ```
 
----
+## Supported receivers
 
+Honestly short, because it only lists what has been measured.
 
+| Receiver | Matroska | Notes |
+| --- | --- | --- |
+| "Smart TV" (mDNS model `Smart TV`, Default Media Receiver) | *not yet confirmed* | fragmented MP4, HLS and raw MPEG-TS were all **measured to be refused** on this device; see [docs/format-spike.md](docs/format-spike.md) |
+
+If you have a receiver, please run
+
+```bash
+helpers/cast-helper/dev/spike_formats.py --device "<name>"
+```
+
+and send the table it prints. It is the one thing that cannot be worked out
+from this end.
+
+## Privacy
+
+The stream is your screen, so it is treated as such.
+
+- The URL contains a **128-bit random token**. Without it you get 404.
+- Only the receivers you cast to may fetch it. Any other address gets
+  **403, even with the correct token**.
+- The server binds a **fixed port range** (8765–8775 by default) so you can
+  firewall it deliberately, rather than a random high port that cannot be
+  allowed in advance.
+- The URL uses the network interface that reaches that particular receiver,
+  not whichever one happens to route to the internet.
+- Nothing is sent anywhere else. There is no telemetry, no account and no
+  cloud service. The only outbound connections are mDNS discovery on your
+  LAN and the Cast protocol to the receivers you chose.
+- The screen-share permission you grant is stored in
+  `~/.local/state/cast-display/portal.json` so you are not asked every time.
+  `./install.sh --uninstall` deletes it.
+
+## Miracast is out of scope
+
+This extension does not implement Miracast, and the device list says so.
+
+Native Miracast means Wi-Fi Direct (P2P) group negotiation, a WFD/RTSP
+session, and usually HDCP. That is a wireless-stack problem rather than a
+streaming one, it needs a compatible driver and firmware, and
+[GNOME Network Displays](https://gitlab.gnome.org/GNOME/gnome-network-displays)
+already does it properly — including MICE, Miracast over existing
+infrastructure, from version 0.91.
+
+So the list carries exactly one Miracast row. It opens GND, or the software
+centre if GND is not installed, and **no cast session is ever created for
+it**: the tile does not change state and there is nothing to disconnect.
+The previous version marked the cast active the moment the GND window
+opened, which meant the UI claimed to be casting when it was not.
 
 ## Development
 
-```text
-cast/
-├── extension.js              # enable/disable, one QS indicator
-├── ui/castDisplayMenu.js     # activation, devices, connect branch
-├── lib/displayConfig.js      # Mutter layouts
-├── lib/presentationMode.js   # inhibit + DND (auto while casting)
-├── lib/castService.js        # D-Bus client
-├── helpers/cast-helper/      # Python session service
-├── schemas/                  # GSettings
-├── install.sh                # one-shot installer
-└── Makefile                  # install / pack / uninstall
+```bash
+make test        # pytest + node --test + eslint + ruff + schema check
+make pack        # the extension zip, without the helper
+make release     # a tarball with the extension, helper and installer
 ```
 
-Helper D-Bus API (`org.cast.tools.Cast1`):
-
-- `ListDevices() → a(ssssb)` id, name, model, protocol, online  
-- `CastDesktop(id, source)`, `CastDevices(as ids, source)`, `DisconnectDevice(id)`  
-- `ListSessions() → a(sss)`, `Stop()`, `GetStatus()`, `Refresh()`, `HasMiracastSupport()`  
-- Signals: `DevicesChanged`, `SessionChanged`
-
----
-
-
-
-## Roadmap (enhance next)
-
-- **Audio** in the mirror pipeline (PipeWire audio → AAC/Opus)
-- Fewer portal prompts (restore tokens where the portal allows)
-- Research **extend desktop onto** a wireless sink (virtual monitor)
-- **DLNA/UPnP** renderers (reuse HTTP URL)
-- Preferences UI (bitrate, source, auto-reconnect)
-- Keyboard shortcut similar to Win+K
-- Translations (`po/`)
-- CI pack + schema checks; [extensions.gnome.org](https://extensions.gnome.org) listing
-- Optional `.deb` package
-
----
-
-
-
-## Uninstall
+Neither a television nor a second monitor is needed for `make test`. The
+harness replaces both:
 
 ```bash
-./install.sh --uninstall
-# or: make uninstall
+cd helpers/cast-helper
+./dev/run_helper.sh --testsrc --fake 2    # no screen, no portal, no TV
+./dev/run_nested_shell.sh                 # the extension in a real Shell
+./dev/measure_stream.sh 1280x720@30       # CPU, latency, time to first frame
+./dev/spike_formats.py --local            # serve each format and decode it
 ```
 
----
+A fake receiver is not a stub: "playing" runs `ffprobe` against the stream
+URL and fails unless a video stream actually decodes.
 
+Further reading:
 
+- [docs/architecture.md](docs/architecture.md) — how the two processes fit
+  together and why
+- [docs/format-spike.md](docs/format-spike.md) — which stream format a
+  Chromecast plays, and how that was established
+- [docs/phase-4-display-modes.md](docs/phase-4-display-modes.md) — the exact
+  caps that make a virtual monitor usable
+- [docs/manual-tests.md](docs/manual-tests.md) — the hardware checklist
+- [docs/phase-0-baseline.md](docs/phase-0-baseline.md) — the defects this
+  rewrite fixed, each reproduced by measurement first
 
-## License
+## Licence
 
-MIT see [LICENSE](LICENSE).
-
----
-
-
-
-## Credits
-
-Built on Mutter DisplayConfig, xdg-desktop-portal ScreenCast, pychromecast, GStreamer/ffmpeg and optionally [GNOME Network Displays](https://gitlab.gnome.org/GNOME/gnome-network-displays) for Miracast.
+GPL-3.0-or-later. See [LICENSE](LICENSE).

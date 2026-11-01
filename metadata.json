@@ -16,5 +16,5 @@
   "settings-schema": "org.gnome.shell.extensions.display-and-cast",
   "gettext-domain": "display-and-cast",
   "url": "https://github.com/MatoloJr/cast",
-  "version": 3
+  "version": 4
 }

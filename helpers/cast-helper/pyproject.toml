@@ -1,0 +1,34 @@
+[tool.ruff]
+line-length = 90
+target-version = "py311"
+exclude = ["dev/*"]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "F",      # pyflakes
+    "W",      # pycodestyle warnings
+    "I",      # import sorting
+    "UP",     # pyupgrade
+    "B",      # bugbear
+    "C4",     # comprehensions
+    "RET",    # return simplification
+    "SIM",    # simplification
+]
+ignore = [
+    # The portal and GStreamer modules import gi and then from gi.repository,
+    # which has to happen after gi.require_version.
+    "E402",
+    # Catching broad exceptions is correct in a daemon that must not die
+    # because one receiver misbehaved; each one is logged.
+    "BLE001",
+    # An explicit try/except around teardown reads better here than
+    # contextlib.suppress, and matches the surrounding style.
+    "SIM105",
+    # enum.StrEnum needs Python 3.11; (str, Enum) also works on 3.9 and 3.10,
+    # which the older GNOME releases in shell-version still ship.
+    "UP042",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]
