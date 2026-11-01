@@ -1,0 +1,682 @@
+<title>Cast Display</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cantarell:wght@400;700&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one reading column, a sticky section rail on wide screens, and
+   full-width bands only where the page changes register (the honesty note,
+   the support matrix). The status markers are the ones `--doctor` prints. */
+:root {
+    --bg: #fbfcfd;
+    --surface: #ffffff;
+    --surface-sunk: #f1f4f7;
+    --fg: #15202b;
+    --fg-dim: #566573;
+    --fg-faint: #7c8995;
+    --line: #dde4ea;
+    --line-strong: #c3cdd6;
+    --accent: #1a6b8f;
+    --accent-soft: #e4f0f6;
+    --ok: #1f7a4d;
+    --warn: #8a5a00;
+    --fail: #b3261e;
+    --term-bg: #16212b;
+    --term-fg: #d6e2ec;
+
+    --font-display: "Cantarell", "Source Sans 3", system-ui, sans-serif;
+    --font-body: "Source Sans 3", system-ui, -apple-system, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+    --gutter-l: max(16px, env(safe-area-inset-left, 0px));
+    --gutter-r: max(16px, env(safe-area-inset-right, 0px));
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --bg: #11181f;
+        --surface: #182229;
+        --surface-sunk: #0d141a;
+        --fg: #e6edf3;
+        --fg-dim: #9fb0bd;
+        --fg-faint: #76889a;
+        --line: #26333d;
+        --line-strong: #3a4a57;
+        --accent: #64b6da;
+        --accent-soft: #15303d;
+        --ok: #53c08a;
+        --warn: #d9a441;
+        --fail: #f28b82;
+        --term-bg: #0b1218;
+        --term-fg: #cddae5;
+        color-scheme: dark;
+    }
+}
+
+:root[data-theme="dark"] {
+    --bg: #11181f;
+    --surface: #182229;
+    --surface-sunk: #0d141a;
+    --fg: #e6edf3;
+    --fg-dim: #9fb0bd;
+    --fg-faint: #76889a;
+    --line: #26333d;
+    --line-strong: #3a4a57;
+    --accent: #64b6da;
+    --accent-soft: #15303d;
+    --ok: #53c08a;
+    --warn: #d9a441;
+    --fail: #f28b82;
+    --term-bg: #0b1218;
+    --term-fg: #cddae5;
+    color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-body);
+    font-size: 17px;
+    line-height: 1.65;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+}
+
+.band { width: 100%; }
+.band-sunk { background: var(--surface-sunk); border-block: 1px solid var(--line); }
+
+.wrap {
+    max-width: 50rem;
+    margin-inline: auto;
+    padding-left: var(--gutter-l);
+    padding-right: var(--gutter-r);
+    padding-block: 2.5rem;
+}
+
+h1, h2, h3 {
+    font-family: var(--font-display);
+    text-wrap: balance;
+    line-height: 1.2;
+    margin: 0;
+}
+h1 { font-size: clamp(2.1rem, 7vw, 3.1rem); letter-spacing: -0.02em; }
+h2 { font-size: clamp(1.4rem, 4vw, 1.8rem); margin-block: 2.6rem 0.9rem; }
+h3 { font-size: 1.1rem; margin-block: 1.8rem 0.5rem; }
+h2 + p, h3 + p { margin-top: 0; }
+p { margin-block: 0.9rem; }
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+code { font-family: var(--font-mono); font-size: 0.88em; }
+p code, li code, td code {
+    background: var(--surface-sunk);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 0.05em 0.35em;
+}
+ul, ol { padding-left: 1.3rem; }
+li { margin-block: 0.35rem; }
+strong { font-weight: 600; }
+
+/* -- masthead ----------------------------------------------------------- */
+
+.masthead { border-bottom: 1px solid var(--line); }
+.masthead .wrap { padding-block: 3rem 2.2rem; }
+.eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--fg-faint);
+    margin: 0 0 0.9rem;
+}
+.lede { font-size: 1.2rem; color: var(--fg-dim); max-width: 38rem; margin-block: 1rem 0; }
+.masthead-meta {
+    display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem;
+    margin-top: 1.6rem;
+    font-family: var(--font-mono); font-size: 0.78rem; color: var(--fg-faint);
+}
+
+/* -- nav ---------------------------------------------------------------- */
+
+.toc { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 1.8rem; }
+.toc a {
+    font-family: var(--font-mono); font-size: 0.78rem;
+    text-decoration: none; color: var(--fg-dim);
+    border: 1px solid var(--line-strong); border-radius: 99px;
+    padding: 0.18rem 0.7rem;
+}
+.toc a:hover { border-color: var(--accent); color: var(--accent); }
+
+/* -- doctor-style status markers ---------------------------------------- */
+
+.mark {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.mark-ok { color: var(--ok); }
+.mark-warn { color: var(--warn); }
+.mark-fail { color: var(--fail); }
+
+.note {
+    border-left: 3px solid var(--accent);
+    background: var(--accent-soft);
+    padding: 0.9rem 1.1rem;
+    border-radius: 0 6px 6px 0;
+    margin-block: 1.4rem;
+}
+.note > :first-child { margin-top: 0; }
+.note > :last-child { margin-bottom: 0; }
+.note-warn { border-left-color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); }
+
+/* -- code --------------------------------------------------------------- */
+
+.cmd { position: relative; margin-block: 1.1rem; }
+.cmd pre {
+    background: var(--term-bg);
+    color: var(--term-fg);
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0.95rem 3.4rem 0.95rem 1rem;
+    border-radius: 7px;
+    overflow-x: auto;
+}
+.cmd pre .c { color: #7f95a6; }
+.copy {
+    position: absolute; top: 0.5rem; right: 0.5rem;
+    font-family: var(--font-mono); font-size: 0.68rem;
+    background: rgba(255,255,255,0.08); color: var(--term-fg);
+    border: 1px solid rgba(255,255,255,0.18); border-radius: 5px;
+    padding: 0.2rem 0.5rem; cursor: pointer;
+}
+.copy:hover { background: rgba(255,255,255,0.16); }
+.copy[data-done="1"] { color: #8fd9af; border-color: #8fd9af; }
+
+/* -- tables ------------------------------------------------------------- */
+
+.scroller { overflow-x: auto; margin-block: 1.2rem; }
+table { border-collapse: collapse; width: 100%; min-width: 30rem; font-size: 0.93rem; }
+th, td { text-align: left; padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--font-display); font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-dim); }
+tbody tr:last-child td { border-bottom: none; }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* -- support matrix ----------------------------------------------------- */
+
+.matrix { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; margin-block: 1.4rem; }
+.matrix div {
+    min-width: 0;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 0.9rem 1rem;
+}
+.matrix dt { font-family: var(--font-mono); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--fg-faint); }
+.matrix dd { margin: 0.3rem 0 0; font-size: 1.05rem; }
+.matrix small { display: block; color: var(--fg-dim); font-size: 0.85rem; margin-top: 0.25rem; line-height: 1.45; }
+
+/* -- footer ------------------------------------------------------------- */
+
+footer { border-top: 1px solid var(--line); color: var(--fg-dim); font-size: 0.9rem; }
+footer .wrap { padding-block: 1.8rem 2.6rem; }
+
+@media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+</style>
+
+<header class="band masthead">
+    <div class="wrap">
+        <p class="eyebrow">GNOME Shell extension &middot; display-and-cast@cast.tools</p>
+        <h1>Cast Display</h1>
+        <p class="lede">
+            Cast your screen to Chromecast and Google TV from GNOME's Quick
+            Settings. Mirror a screen or extend your desktop onto the
+            television, send the audio with it, and drive several receivers
+            from a single encode.
+        </p>
+        <div class="masthead-meta">
+            <span>version 5</span>
+            <span>GPL-3.0-or-later</span>
+            <span>GNOME Shell 45&ndash;50</span>
+            <span><a href="https://github.com/MatoloJr/cast">github.com/MatoloJr/cast</a></span>
+        </div>
+        <nav class="toc">
+            <a href="#what">What it does</a>
+            <a href="#install">Install</a>
+            <a href="#using">Using it</a>
+            <a href="#uninstall">Uninstall</a>
+            <a href="#devices">How many devices</a>
+            <a href="#platforms">Operating systems</a>
+            <a href="#trouble">Troubleshooting</a>
+            <a href="#privacy">Privacy</a>
+            <a href="#inside">How it works</a>
+            <a href="#dev">Development</a>
+        </nav>
+    </div>
+</header>
+
+<div class="band band-sunk">
+    <div class="wrap" style="padding-block:1.6rem">
+        <p style="margin:0"><span class="mark mark-warn">[warn]</span>
+            <strong>Read this before you trust it.</strong>
+            Everything described here has been exercised end to end on Ubuntu
+            26.04 / GNOME Shell 50.1, with the development harness and with
+            real display and portal behaviour. What has <em>not</em> been
+            confirmed is a picture on a real television: the stream format
+            this version sends has never been seen playing on hardware. One
+            receiver has been tested and it refused every other format tried.
+            Nothing on this page is described as working on a TV that has not
+            been seen working on one.
+        </p>
+    </div>
+</div>
+
+<main>
+<div class="wrap">
+
+    <h2 id="what">What it does</h2>
+    <div class="scroller">
+        <table>
+            <tbody>
+                <tr><td><strong>Mirror</strong></td><td>Share an existing screen. The desktop portal asks which one.</td></tr>
+                <tr><td><strong>Extend</strong></td><td>Create a virtual monitor for the television, so it becomes a second desktop you can drag windows onto. It appears in Settings &rarr; Displays.</td></tr>
+                <tr><td><strong>TV only</strong></td><td>Extend, then switch this computer's screens off &mdash; with a 15&nbsp;second &ldquo;keep these settings?&rdquo; timer that reverts itself if you do not answer.</td></tr>
+                <tr><td><strong>Several receivers</strong></td><td>Select more than one, or add one mid-stream without re-prompting and without interrupting the others.</td></tr>
+                <tr><td><strong>Audio</strong></td><td>Send what the computer is playing, with an A/V offset control and an optional &ldquo;mute this computer while casting&rdquo;.</td></tr>
+                <tr><td><strong>Miracast</strong></td><td>One row that opens GNOME Network Displays, or offers to install it. This extension implements no Miracast of its own.</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p>
+        While casting, a cast icon appears in the top bar with the receiver
+        count, and notification banners can be hidden automatically.
+    </p>
+
+    <h2 id="requirements">Requirements</h2>
+    <ul>
+        <li><strong>GNOME Shell 45&ndash;50</strong>, on Wayland. Developed and verified on 50.1.</li>
+        <li><strong>PipeWire</strong> and a working <code>xdg-desktop-portal</code> with the ScreenCast interface. Portal version&nbsp;4+ avoids a permission prompt on every connect; <em>Extend</em> additionally needs the portal to offer the <code>VIRTUAL</code> source type.</li>
+        <li>An <strong>H.264 encoder</strong> GStreamer can use &mdash; VA-API (<code>vah264enc</code>) if you have it, otherwise <code>x264enc</code>.</li>
+        <li><strong>Python 3.9+</strong> with PyGObject, and <code>ffmpeg</code> for the diagnostics.</li>
+    </ul>
+
+    <h2 id="install">Install</h2>
+    <div class="cmd">
+        <button class="copy" type="button">copy</button>
+<pre>git clone https://github.com/MatoloJr/cast
+cd cast
+./install.sh</pre>
+    </div>
+    <p>
+        Then <strong>log out and back in</strong>. On Wayland the Shell cannot
+        reload itself, so the tile will not appear until the session restarts.
+        No reboot is needed, and the helper starts immediately. On X11 press
+        <code>Alt</code>+<code>F2</code>, type <code>r</code> and press Enter
+        instead.
+    </p>
+
+    <h3>What the installer puts where</h3>
+    <div class="scroller">
+        <table>
+            <thead><tr><th>Path</th><th>What it is</th></tr></thead>
+            <tbody>
+                <tr><td><code>~/.local/share/gnome-shell/extensions/display-and-cast@cast.tools</code></td><td>A symlink to your clone, so edits apply after a Shell restart</td></tr>
+                <tr><td><code>~/.local/share/cast-display/cast-helper/</code></td><td>The Python helper and its virtualenv</td></tr>
+                <tr><td><code>~/.config/systemd/user/cast-helper.service</code></td><td>Starts the helper with the graphical session</td></tr>
+                <tr><td><code>~/.local/share/dbus-1/services/org.cast.tools.Cast1.service</code></td><td>D-Bus activation, handed to systemd</td></tr>
+                <tr><td><code>~/.local/state/cast-display/portal.json</code></td><td>The saved screen-share permission, written on first use</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p>
+        It installs its apt dependencies, offers to add a <code>ufw</code> rule
+        if your firewall is active &mdash; printing the command either way
+        rather than changing anything silently &mdash; and finishes by running
+        the diagnostics.
+    </p>
+
+    <h3>Other ways to run it</h3>
+    <div class="cmd">
+        <button class="copy" type="button">copy</button>
+<pre>./install.sh --helper-only   <span class="c"># just the Python side</span>
+./install.sh --uninstall     <span class="c"># remove everything</span>
+
+make install                 <span class="c"># same as ./install.sh</span>
+make helper                  <span class="c"># same as --helper-only</span>
+make uninstall               <span class="c"># same as --uninstall</span>
+make test                    <span class="c"># pytest + node --test + eslint + ruff + schema</span>
+make pack                    <span class="c"># the extension zip, for extensions.gnome.org</span>
+make release                 <span class="c"># a tarball with extension, helper and installer</span></pre>
+    </div>
+
+    <h2 id="using">Using it</h2>
+    <p>
+        Quick Settings &rarr; <strong>Cast Display</strong>.
+    </p>
+    <ul>
+        <li>The <strong>chevron</strong> opens a dialog in the middle of the screen. Tick one or more displays and press <strong>Connect</strong>.</li>
+        <li>The <strong>tile itself</strong> is a switch. While a cast is running it stops it. Otherwise it casts straight back to the receivers you last used, and only falls back to opening the dialog when there is nothing to go back to.</li>
+        <li><code>Super</code>+<code>K</code> opens the dialog from anywhere, without going through Quick Settings.</li>
+        <li>Everything else lives in the preferences: mode, resolution, frame rate, bitrate, audio and its offset, the port range, the shortcut, and a <em>Forget</em> button that clears the receivers the tile resumes to.</li>
+    </ul>
+    <div class="note">
+        <p>
+            The picker used to be a Quick Settings dropdown. A dropdown is
+            anchored under its tile, has no scroll view and no height bound,
+            so on a laptop panel its lower half ran off the bottom of the
+            screen with no way to reach it. The dialog measures itself against
+            the monitor's work area and scrolls only the device list. On a
+            1366&times;768 panel with twelve receivers listed, the list is
+            capped at 393&nbsp;px and the whole dialog comes to 697&nbsp;px
+            inside a 736&nbsp;px work area.
+        </p>
+    </div>
+
+    <h2 id="uninstall">Uninstall</h2>
+    <div class="cmd">
+        <button class="copy" type="button">copy</button>
+<pre>cd cast
+./install.sh --uninstall</pre>
+    </div>
+    <p>It removes, in this order:</p>
+    <ul>
+        <li>disables the extension (<code>gnome-extensions disable</code>)</li>
+        <li>stops and disables <code>cast-helper.service</code>, then deletes the unit file</li>
+        <li>deletes the D-Bus service file <code>org.cast.tools.Cast1.service</code></li>
+        <li>deletes <code>~/.local/share/cast-display/</code> &mdash; helper, virtualenv and all</li>
+        <li>deletes <code>$XDG_RUNTIME_DIR/cast-display/</code></li>
+        <li>deletes <code>~/.local/state/cast-display/</code>, <strong>including the saved screen-share permission</strong>, so the portal will ask again after a reinstall</li>
+        <li>removes the extension symlink and runs <code>systemctl --user daemon-reload</code></li>
+    </ul>
+    <div class="note note-warn">
+        <p>
+            Two things it will not do silently. The <code>ufw</code> rule is
+            only <em>offered</em> for removal, and never removed without
+            asking; and on Wayland the extension stays loaded until you log
+            out and back in. Your clone of the repository is left alone &mdash;
+            delete it yourself when you are done with it.
+        </p>
+    </div>
+    <p>To take the firewall rule out by hand:</p>
+    <div class="cmd">
+        <button class="copy" type="button">copy</button>
+<pre>sudo ufw delete allow 8765:8775/tcp</pre>
+    </div>
+
+    <h2 id="devices">How many devices</h2>
+    <p>
+        There is <strong>no device cap anywhere in the code</strong>. What
+        actually bounds it:
+    </p>
+    <div class="matrix">
+        <div><dt>Receivers at once</dt><dd>No fixed limit</dd><small>One capture, one H.264 encode, fanned out by <code>multisocketsink</code>. A second television costs network bandwidth, not another encoder.</small></div>
+        <div><dt>Practical ceiling</dt><dd class="num">11</dd><small>The default stream port range is 8765&ndash;8775. Widen it in the preferences if you genuinely need more.</small></div>
+        <div><dt>Bandwidth each</dt><dd class="num">~6000 kbps</dd><small>The default bitrate at 1080p, per receiver, over your Wi-Fi uplink. Lower resolutions use less.</small></div>
+        <div><dt>Reconnect attempts</dt><dd class="num">3</dd><small>Per receiver. Each one runs on its own thread, so one unreachable television marks only its own session failed and the others keep playing.</small></div>
+        <div><dt>Exercised with</dt><dd class="num">3</dd><small>Three receivers in the hardware checklist, including adding a third mid-stream with no new portal prompt and no interruption.</small></div>
+        <div><dt>Real hardware tested</dt><dd class="num">1</dd><small>A single &ldquo;Smart TV&rdquo; Default Media Receiver &mdash; and the stream format is <strong>not yet confirmed</strong> on it.</small></div>
+    </div>
+
+    <h3>Which receivers</h3>
+    <div class="scroller">
+        <table>
+            <thead><tr><th>Protocol</th><th>Status</th><th>Notes</th></tr></thead>
+            <tbody>
+                <tr><td><strong>Google Cast</strong><br><small>Chromecast, Google TV, Android TV</small></td><td><span class="mark mark-ok">[ok&nbsp;&nbsp;]</span> implemented</td><td>The only real transport. mDNS discovery, then Matroska + H.264 over HTTP. Speakers and speaker groups are discovered but cannot show a screen, so they are hidden unless you ask for them.</td></tr>
+                <tr><td><strong>Miracast</strong></td><td><span class="mark mark-warn">[warn]</span> hand-off only</td><td>Not implemented. Native Miracast means Wi-Fi Direct group negotiation, a WFD/RTSP session and usually HDCP &mdash; a wireless-stack problem rather than a streaming one. The list carries exactly one Miracast row and it opens GNOME Network Displays, which does it properly. No cast session is ever created for it.</td></tr>
+                <tr><td><strong>DLNA / UPnP</strong></td><td><span class="mark mark-fail">[FAIL]</span> not supported</td><td>No code, no plans on this page.</td></tr>
+                <tr><td><strong>AirPlay</strong></td><td><span class="mark mark-fail">[FAIL]</span> not supported</td><td>Same.</td></tr>
+                <tr><td><strong>Roku</strong></td><td><span class="mark mark-fail">[FAIL]</span> not supported</td><td>Same.</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p>
+        If you have a receiver, the one thing that cannot be worked out from
+        this end is which stream format it will actually play. Run this and
+        send the table it prints:
+    </p>
+    <div class="cmd">
+        <button class="copy" type="button">copy</button>
+<pre>helpers/cast-helper/dev/spike_formats.py --device "&lt;name&gt;"</pre>
+    </div>
+
+    <h2 id="platforms">How many operating systems</h2>
+    <p><strong>One.</strong> This is a GNOME Shell extension plus a PipeWire screencast, and nothing about it is portable.</p>
+    <div class="scroller">
+        <table>
+            <thead><tr><th>Platform</th><th>Status</th></tr></thead>
+            <tbody>
+                <tr><td><strong>Linux / GNOME Shell 45&ndash;50, Wayland</strong></td><td><span class="mark mark-ok">[ok&nbsp;&nbsp;]</span> the target. Verified on Ubuntu 26.04, GNOME Shell 50.1</td></tr>
+                <tr><td>Linux / GNOME Shell on X11</td><td><span class="mark mark-warn">[warn]</span> handled by the installer, but not the verified path</td></tr>
+                <tr><td>Debian, Ubuntu and derivatives</td><td><span class="mark mark-ok">[ok&nbsp;&nbsp;]</span> one command: the installer's dependency step is apt-only</td></tr>
+                <tr><td>Fedora, Arch, openSUSE &hellip;</td><td><span class="mark mark-warn">[warn]</span> install the packages yourself, then <code>./install.sh --helper-only</code></td></tr>
+                <tr><td>KDE, XFCE, Sway, any non-GNOME desktop</td><td><span class="mark mark-fail">[FAIL]</span> the UI is a GNOME Shell extension</td></tr>
+                <tr><td>macOS, Windows</td><td><span class="mark mark-fail">[FAIL]</span> no</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h3>Dependencies, if your distribution is not Debian-based</h3>
+    <p>What the installer installs with apt:</p>
+    <div class="cmd">
+        <button class="copy" type="button">copy</button>
+<pre>python3-venv python3-gi ffmpeg
+gir1.2-gstreamer-1.0 gstreamer1.0-tools
+gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
+gstreamer1.0-libav gstreamer1.0-pipewire
+
+<span class="c"># optional</span>
+gstreamer1.0-vaapi            <span class="c"># hardware H.264</span>
+gnome-network-displays        <span class="c"># the Miracast hand-off target</span></pre>
+    </div>
+    <p>
+        The equivalents elsewhere are the GStreamer base, good, bad, ugly and
+        libav plugin sets, the PipeWire GStreamer plugin, PyGObject and
+        <code>ffmpeg</code>. On Fedora that is roughly
+        <code>gstreamer1-plugins-{base,good,bad-free,ugly}</code>,
+        <code>gstreamer1-libav</code>, <code>python3-gobject</code>; on Arch,
+        <code>gst-plugins-{base,good,bad,ugly}</code>,
+        <code>gst-libav</code>, <code>gst-plugin-pipewire</code>,
+        <code>python-gobject</code>. Those names are not exercised by the
+        installer or by CI, so treat them as a starting point and let
+        <code>--doctor</code> tell you what is still missing.
+    </p>
+
+    <h2 id="trouble">If something goes wrong</h2>
+    <p>Start here. It checks everything the helper depends on and names what is missing:</p>
+    <div class="cmd">
+        <button class="copy" type="button">copy</button>
+<pre>~/.local/share/cast-display/cast-helper/venv/bin/python -m cast_helper --doctor</pre>
+    </div>
+    <p>
+        It reports on the session, GStreamer and which encoder it chose, a
+        real ten-frame encode, ffmpeg, the ScreenCast portal and its source
+        types, Network Displays, every network interface, the cast libraries,
+        and the devices it can see in five seconds. <span class="mark mark-warn">[warn]</span>
+        lines are things you can usually live with;
+        <span class="mark mark-fail">[FAIL]</span> lines are not.
+    </p>
+
+    <div class="scroller">
+        <table>
+            <thead><tr><th>Symptom</th><th><code>--doctor</code> shows</th><th>What to do</th></tr></thead>
+            <tbody>
+                <tr><td>The tile never appears</td><td></td><td>Log out and back in; then <code>gnome-extensions info display-and-cast@cast.tools</code></td></tr>
+                <tr><td>&ldquo;The cast helper is not running&rdquo;</td><td></td><td><code>systemctl --user status cast-helper.service</code>, then <code>journalctl --user -u cast-helper.service -f</code></td></tr>
+                <tr><td>&ldquo;Helper outdated: run ./install.sh&rdquo;</td><td></td><td>The extension was updated and the helper was not. Re-run <code>./install.sh</code></td></tr>
+                <tr><td>No displays listed</td><td><code>devices: none found</code></td><td>mDNS is not reaching the LAN. Check UDP 5353 is not blocked and that you are not on a guest network with client isolation</td></tr>
+                <tr><td>The TV connects, then goes black</td><td><code>encoder chosen: &hellip;</code> is fine</td><td>Almost certainly the receiver refusing the stream format. Run <code>spike_formats.py --device "&lt;name&gt;"</code> and send the result</td></tr>
+                <tr><td>&ldquo;No video encoder is available&rdquo;</td><td><span class="mark mark-fail">[FAIL]</span> <code>h264 encoder</code></td><td><code>sudo apt install gstreamer1.0-plugins-ugly gstreamer1.0-plugins-bad</code></td></tr>
+                <tr><td>Casting works but the TV shows nothing</td><td><code>ufw: active</code></td><td><code>sudo ufw allow from &lt;your subnet&gt; to any port 8765:8775 proto tcp</code></td></tr>
+                <tr><td>Extend only mirrors</td><td><code>AvailableSourceTypes</code> without <code>VIRTUAL</code></td><td>Your portal cannot create a virtual monitor. Mirror is all that is available</td></tr>
+                <tr><td>Audio switch is greyed out</td><td><span class="mark mark-fail">[FAIL]</span> <code>audio</code></td><td>No AAC encoder: <code>sudo apt install gstreamer1.0-libav</code></td></tr>
+                <tr><td>Wrong network interface used</td><td>several <code>iface</code> lines</td><td>The stream URL is chosen per receiver, so this should not happen. If it does, file it with the <code>--doctor</code> output</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h3>Useful commands</h3>
+    <div class="cmd">
+        <button class="copy" type="button">copy</button>
+<pre><span class="c"># follow the helper</span>
+journalctl --user -u cast-helper.service -f
+
+<span class="c"># what the helper can see</span>
+gdbus call --session -d org.cast.tools.Cast1 -o /org/cast/tools/Cast1 \
+  -m org.freedesktop.DBus.Properties.Get org.cast.tools.Cast1 Devices
+
+<span class="c"># stop everything</span>
+gdbus call --session -d org.cast.tools.Cast1 -o /org/cast/tools/Cast1 \
+  -m org.cast.tools.Cast1.StopAll</pre>
+    </div>
+
+    <h2 id="privacy">Privacy and ports</h2>
+    <p>The stream is your screen, so it is treated as one.</p>
+    <ul>
+        <li>The URL contains a <strong>128-bit random token</strong>. Without it you get <strong>404</strong>.</li>
+        <li>Only the receivers you cast to may fetch it. Any other address gets <strong>403, even with the correct token</strong>.</li>
+        <li>The server binds a <strong>fixed port range</strong> (8765&ndash;8775 by default) so you can firewall it deliberately, rather than a random high port that cannot be allowed in advance.</li>
+        <li>The URL uses the network interface that reaches <em>that particular receiver</em>, not whichever one happens to route to the internet. This matters with a VPN, Docker or several NICs.</li>
+        <li><strong>No telemetry, no account, no cloud service.</strong> The only outbound connections are mDNS discovery on your LAN and the Cast protocol to the receivers you chose.</li>
+        <li>The screen-share permission is stored in <code>~/.local/state/cast-display/portal.json</code> so you are not asked every time. The uninstaller deletes it.</li>
+    </ul>
+    <div class="scroller">
+        <table>
+            <thead><tr><th>Port</th><th>Protocol</th><th>Direction</th><th>What for</th></tr></thead>
+            <tbody>
+                <tr><td class="num">5353</td><td>UDP</td><td>in/out, LAN</td><td>mDNS discovery of receivers</td></tr>
+                <tr><td class="num">8765&ndash;8775</td><td>TCP</td><td>inbound from receivers</td><td>The stream itself. Configurable.</td></tr>
+                <tr><td class="num">8009</td><td>TCP</td><td>outbound to receivers</td><td>The Google Cast control channel</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 id="inside">How it works</h2>
+    <p>
+        Two processes. A GNOME Shell extension owns the user interface and the
+        monitor layout; a Python helper owns the capture, the encode and the
+        receivers. They speak D-Bus
+        (<code>org.cast.tools.Cast1</code>, API v2).
+    </p>
+    <p>
+        The Shell is single-threaded and shared with the whole desktop, and a
+        stall in an extension stalls the session. Capture, H.264 encoding,
+        mDNS discovery and talking to televisions all block or go wrong
+        slowly, so they live in a separate process that systemd can restart
+        without touching the Shell. The helper also outlives the extension's
+        <code>disable()</code>, which is what makes a cast survive a screen
+        lock. The Shell's copy of the state is a view; the helper is the
+        truth.
+    </p>
+    <p>
+        One capture is encoded once and fanned out to every receiver by
+        <code>multisocketsink</code>, with the muxer's stream header replayed
+        and keyframe-aligned joins, so a late receiver gets a decodable copy
+        rather than a slice of someone else's.
+    </p>
+
+    <h3>What it costs</h3>
+    <p>
+        Measured on the reference machine through the full pipeline, software
+        encode, one receiver:
+    </p>
+    <div class="scroller">
+        <table>
+            <thead><tr><th>Encode</th><th>CPU</th><th>Memory</th><th>First frame</th><th>Lag behind live</th></tr></thead>
+            <tbody>
+                <tr><td>720p30, x264enc veryfast/zerolatency</td><td class="num">61%</td><td class="num">~100 MB</td><td class="num">0.42 s</td><td class="num">0.13 s</td></tr>
+                <tr><td>1080p30, x264enc veryfast/zerolatency</td><td class="num">114&ndash;132%</td><td class="num">~135 MB</td><td class="num">0.24 s</td><td class="num">1.20 s</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p>
+        One core is 100%. Because 1080p software encode costs more than a full
+        core, the helper <strong>defaults to 720p when there is no hardware
+        encoder</strong> and to 1080p when there is. Add the receiver's own
+        buffering on top of those latencies.
+    </p>
+
+    <h2 id="dev">Development</h2>
+    <p>
+        Neither a television nor a second monitor is needed. The harness
+        replaces both, and a fake receiver is not a stub: &ldquo;playing&rdquo;
+        runs <code>ffprobe</code> against the stream URL and fails unless a
+        video stream actually decodes.
+    </p>
+    <div class="cmd">
+        <button class="copy" type="button">copy</button>
+<pre>make test                                 <span class="c"># everything CI runs</span>
+
+cd helpers/cast-helper
+./dev/run_helper.sh --testsrc --fake 2    <span class="c"># no screen, no portal, no TV</span>
+./dev/run_nested_shell.sh                 <span class="c"># the extension in a real Shell</span>
+./dev/run_nested_shell.sh --devkit        <span class="c"># ...one you can click in</span>
+./dev/measure_stream.sh 1280x720@30       <span class="c"># CPU, latency, time to first frame</span>
+./dev/spike_formats.py --local            <span class="c"># serve each format and decode it</span></pre>
+    </div>
+    <p>
+        CI runs three jobs: the helper (ruff, then pytest under
+        <code>dbus-run-session</code>), the extension (eslint,
+        <code>node --test</code>, and a strict schema compile), and packaging,
+        which builds both the extension zip and the release tarball and
+        asserts that the Python helper has not leaked into the zip.
+    </p>
+    <p>Further reading lives in the repository, under <code>docs/</code>:
+        the architecture, how the stream format was established, the exact
+        caps that make a virtual monitor usable, the hardware checklist, and
+        the defects this rewrite fixed &mdash; each reproduced by measurement
+        first.
+    </p>
+
+</div>
+</main>
+
+<footer>
+    <div class="wrap">
+        <p style="margin:0">
+            Cast Display is free software under the
+            <strong>GPL-3.0-or-later</strong>.
+            Source, issues and the format reports that would help most:
+            <a href="https://github.com/MatoloJr/cast">github.com/MatoloJr/cast</a>.
+        </p>
+    </div>
+</footer>
+
+<script>
+for (const button of document.querySelectorAll('.copy')) {
+    button.addEventListener('click', async () => {
+        const pre = button.parentElement.querySelector('pre');
+        // Comments are there to be read, not pasted into a shell.
+        const text = [...pre.childNodes]
+            .filter(n => !(n.nodeType === 1 && n.classList.contains('c')))
+            .map(n => n.textContent)
+            .join('')
+            .split('\n')
+            .map(line => line.replace(/\s+$/, ''))
+            .filter((line, i, all) => line !== '' || (i > 0 && i < all.length - 1))
+            .join('\n')
+            .trim();
+        try {
+            await navigator.clipboard.writeText(text);
+            button.textContent = 'copied';
+        } catch {
+            const range = document.createRange();
+            range.selectNodeContents(pre);
+            const selection = getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            button.textContent = 'select & copy';
+        }
+        button.dataset.done = '1';
+        setTimeout(() => {
+            button.textContent = 'copy';
+            delete button.dataset.done;
+        }, 2000);
+    });
+}
+</script>

@@ -17,6 +17,10 @@ network bandwidth rather than another encoder.
 > working on one; read [docs/format-spike.md](docs/format-spike.md) before
 > trusting the format choice.
 
+A single-page version of everything below — install, uninstall, running it,
+how many devices, which operating systems — is in
+[index.html](index.html); open it in a browser.
+
 ## What it does
 
 |  |  |

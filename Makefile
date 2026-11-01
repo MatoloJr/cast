@@ -82,6 +82,7 @@ release: clean schema
 	@rm -rf build/$(RELEASE)
 	@mkdir -p build/$(RELEASE)
 	cp -a metadata.json extension.js prefs.js stylesheet.css LICENSE README.md \
+	      index.html \
 	      Makefile install.sh install-helper.sh \
 	      lib ui schemas docs build/$(RELEASE)/
 	cp -a $(HELPER) build/$(RELEASE)/helpers-cast-helper
