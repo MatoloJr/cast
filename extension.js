@@ -84,9 +84,14 @@ class CastDisplayIndicator extends QuickSettings.SystemIndicator {
         this._count.text = sessions > 1 ? String(sessions) : '';
     }
 
-    openMenu() {
-        Main.panel.statusArea.quickSettings.menu.open();
-        this._menuToggle.menu.open();
+    /**
+     * The keyboard shortcut's entry point.
+     *
+     * It no longer opens Quick Settings first. The picker is a dialog now,
+     * so the panel would only flash open and shut behind it.
+     */
+    openDialog() {
+        this._menuToggle.openDialog();
     }
 
     destroy() {
@@ -144,7 +149,7 @@ export default class DisplayAndCastExtension extends Extension {
                 this.getSettings(),
                 Meta.KeyBindingFlags.NONE,
                 Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
-                () => this._indicator?.openMenu()
+                () => this._indicator?.openDialog()
             );
             this._keybindingAdded = true;
         } catch (e) {

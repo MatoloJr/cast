@@ -1,14 +1,17 @@
-import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GObject from 'gi://GObject';
-import St from 'gi://St';
 
 import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
+import {PopupAnimation} from 'resource:///org/gnome/shell/ui/boxpointer.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js';
 
-import {verticalBox} from '../lib/compat.js';
+import {
+    TileAction,
+    chooseTileAction,
+    rememberableDevices,
+} from '../lib/tileAction.js';
+import {CastDialog} from './castDialog.js';
 
 function _warn(message, error) {
     if (error)
@@ -18,160 +21,17 @@ function _warn(message, error) {
 }
 
 /**
- * Per-receiver state → a short chip label the user can act on.
+ * The Quick Settings tile.
  *
- * Built on demand, not at module scope: from GNOME 45 `gettext` may only be
- * called while an extension is running and a module-level `_()` throws
- * "gettext can only be called from extensions" at import time.
+ * It owns the client subscriptions, the selection and every action, but no
+ * picker: the chevron opens {@link CastDialog} in the middle of the screen
+ * instead of a dropdown. The dropdown was replaced because it is anchored
+ * under the tile with no scroll view and no height bound, so on a laptop
+ * panel its lower half was unreachable.
  *
- * @param {string} state the session state reported by the helper
- * @returns {string} a label for the chip
+ * The tile body is therefore a plain switch: it stops a running cast, or
+ * resumes the receivers the last cast went to.
  */
-function sessionLabel(state) {
-    switch (state) {
-    case 'connecting':
-        return _('Connecting…');
-    case 'buffering':
-        return _('Buffering…');
-    case 'playing':
-        return _('Playing');
-    case 'error':
-        return _('Error');
-    default:
-        return state;
-    }
-}
-
-const SESSION_STYLES = {
-    connecting: 'cast-chip-pending',
-    buffering: 'cast-chip-pending',
-    playing: 'cast-chip-playing',
-    error: 'cast-chip-error',
-};
-
-/**
- * One device row. Created once per device and *updated* in place, so the
- * menu never rebuilds itself underneath the pointer (defect S5: the old menu
- * destroyed and recreated every row on each 12 s discovery tick, which made
- * rows flicker and swallowed clicks).
- */
-const DeviceRow = GObject.registerClass(
-class DeviceRow extends PopupMenu.PopupBaseMenuItem {
-    _init(device, callbacks) {
-        super._init({activate: true});
-        this._deviceId = device.id;
-        this._callbacks = callbacks;
-        this._selected = false;
-        this._session = null;
-
-        this._check = new St.Icon({
-            icon_name: 'object-select-symbolic',
-            style_class: 'popup-menu-icon cast-check',
-            opacity: 0,
-            y_align: Clutter.ActorAlign.CENTER,
-        });
-        this.add_child(this._check);
-
-        const text = verticalBox({style_class: 'cast-row-text', x_expand: true});
-        this._name = new St.Label({style_class: 'cast-row-name'});
-        this._detail = new St.Label({style_class: 'cast-row-detail'});
-        text.add_child(this._name);
-        text.add_child(this._detail);
-        this.add_child(text);
-
-        this._chip = new St.Label({
-            style_class: 'cast-chip',
-            y_align: Clutter.ActorAlign.CENTER,
-            visible: false,
-        });
-        this.add_child(this._chip);
-
-        this._disconnect = new St.Button({
-            style_class: 'cast-row-button',
-            child: new St.Icon({
-                icon_name: 'window-close-symbolic',
-                style_class: 'popup-menu-icon',
-            }),
-            visible: false,
-            y_align: Clutter.ActorAlign.CENTER,
-        });
-        this._disconnectId = this._disconnect.connect('clicked', () => {
-            this._callbacks.onDisconnect(this._deviceId);
-        });
-        this.add_child(this._disconnect);
-
-        this._activateId = this.connect('activate', () => {
-            this._callbacks.onToggle(this._deviceId);
-        });
-
-        this._disposed = false;
-        this.connect('destroy', () => {
-            this._disposed = true;
-        });
-
-        this.update(device, null, false);
-    }
-
-    get deviceId() {
-        return this._deviceId;
-    }
-
-    update(device, session, selected) {
-        if (this._disposed)
-            return;
-        this._name.text = device.name || device.id;
-
-        let detail = device.model || '';
-        if (device.protocol === 'miracast-handoff')
-            detail = device.model || _('Opens Network Displays');
-        else if (device.cast_type === 'audio')
-            detail = _('Speaker cannot show a screen');
-        else if (device.cast_type === 'group')
-            detail = _('Speaker group cannot show a screen');
-        this._detail.text = detail;
-        this._detail.visible = !!detail;
-
-        this._session = session;
-        if (session) {
-            const state = session.state || 'connecting';
-            this._chip.text = sessionLabel(session.error ? 'error' : state);
-            this._chip.style_class = `cast-chip ${SESSION_STYLES[state] || ''}`;
-            this._chip.visible = true;
-            this._disconnect.visible = true;
-            this._check.opacity = 0;
-            if (session.error)
-                this._detail.text = session.error;
-            this._detail.visible = !!this._detail.text;
-        } else {
-            this._chip.visible = false;
-            this._disconnect.visible = false;
-            this._selected = selected;
-            this._check.opacity = selected ? 255 : 0;
-        }
-
-        // An audio target can never show a screen, so it is never
-        // selectable. The Miracast hand-off is clickable but is an action,
-        // not a selection, so it never shows a check mark.
-        this._isHandoff = device.protocol === 'miracast-handoff';
-        this.sensitive = this._isHandoff || device.video_capable !== false;
-        if (this._isHandoff)
-            this._check.opacity = 0;
-    }
-
-    destroy() {
-        this._disposed = true;
-        if (this._activateId) {
-            this.disconnect(this._activateId);
-            this._activateId = 0;
-        }
-        if (this._disconnectId) {
-            this._disconnect.disconnect(this._disconnectId);
-            this._disconnectId = 0;
-        }
-        super.destroy();
-    }
-});
-
 export const CastDisplayMenuToggle = GObject.registerClass(
 class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
     _init(extension, client, presentation, displayModes) {
@@ -188,19 +48,14 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         this._displayModes = displayModes ?? null;
         this._destroyed = false;
 
-        this._rows = new Map();          // deviceId → DeviceRow
         this._selected = new Set();
-        this._localOnlyItems = [];
-        this._localSignature = '';
-        this._localScreensPending = false;
+        this._dialog = null;
         this._syncing = false;
         this._lastNotifiedError = '';
 
-        this.menu.setHeader('video-display-symbolic', _('Cast Display'));
-
-        this._buildMenu();
-
         this._signals = [];
+        this._takeOverMenu();
+
         this._signals.push([this, this.connect('clicked', () => {
             if (!this._syncing)
                 this._onTileClicked();
@@ -212,13 +67,12 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         this._signals.push([this._client, this._client.connect(
             'helper-error', (_c, scope, id, message) =>
                 this._onHelperError(scope, id, message))]);
-        this._signals.push([this.menu, this.menu.connect(
-            'open-state-changed', (_m, open) => {
-                if (open && this._client.available)
-                    this._client.refresh().catch(() => {});
-            })]);
         this._signals.push([this._settings, this._settings.connect(
             'changed::cast-show-speakers', () => this._sync())]);
+        this._signals.push([this._settings, this._settings.connect(
+            'changed::cast-mode', () => this._sync())]);
+        this._signals.push([this._settings, this._settings.connect(
+            'changed::cast-display-only', () => this._sync())]);
 
         // See the note in extension.js: actors are disposed from C during
         // Shell shutdown, so the guard has to hang off the actor's own
@@ -228,89 +82,135 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
         this._sync();
     }
 
-    // -- construction ------------------------------------------------------
+    // -- taking the chevron over -------------------------------------------
 
-    _buildMenu() {
-        this._statusItem = new PopupMenu.PopupMenuItem('', {
-            reactive: false,
-            can_focus: false,
-        });
-        this._statusItem.label.style_class = 'cast-status-label';
-        this.menu.addMenuItem(this._statusItem);
+    /**
+     * Point every route into the dropdown at the dialog instead.
+     *
+     * The chevron's handler is wired inside `QuickMenuToggle._init()` as an
+     * anonymous `() => this.menu.open()` closure, and GJS cannot disconnect
+     * a handler it has no id for. The arrow button itself is no better a
+     * target: it is `this._menuButton` on GNOME 50 but not under a name
+     * worth relying on across 45-50, and the style class it carries was
+     * renamed between 44 and 45. That one method, though, is what the
+     * chevron, the Menu key via `popup-menu` and our own Super+K all call,
+     * so it is the only thing worth intercepting.
+     *
+     * Nothing is ever added to the dropdown, so the worst case for a future
+     * Shell that finds another way in is an empty popup, not a broken tile.
+     */
+    _takeOverMenu() {
+        if (!this.menu || typeof this.menu.open !== 'function') {
+            _warn('This Shell has no quick-toggle menu to intercept; ' +
+                'use the keyboard shortcut to open the dialog');
+            return;
+        }
 
-        this._deviceSection = new PopupMenu.PopupMenuSection();
-        this.menu.addMenuItem(this._deviceSection);
+        this._realMenuOpen = this.menu.open.bind(this.menu);
+        this.menu.open = () => this.openDialog();
 
-        this._actionSeparator = new PopupMenu.PopupSeparatorMenuItem();
-        this.menu.addMenuItem(this._actionSeparator);
+        // Belt, for a Shell that stops routing through menu.open(). It does
+        // not flicker: QuickToggleMenu.open() sets box.opacity = 0 and only
+        // eases it back once the height animation finishes, so closing it in
+        // the same frame means nothing was ever drawn.
+        this._signals.push([this.menu, this.menu.connect(
+            'open-state-changed', (menu, open) => {
+                if (!open)
+                    return;
+                menu.close(PopupAnimation.NONE);
+                this.openDialog();
+            })]);
+    }
 
-        this._connectItem = new PopupMenu.PopupMenuItem(_('Connect'));
-        this._connectItem.connect('activate', () => this._onConnect());
-        this.menu.addMenuItem(this._connectItem);
+    /** Show the picker. Also the Super+K entry point. */
+    openDialog() {
+        if (this._destroyed)
+            return;
 
-        this._stopItem = new PopupMenu.PopupMenuItem(_('Stop casting'));
-        this._stopItem.connect('activate', () => this._onStop());
-        this.menu.addMenuItem(this._stopItem);
+        // A modal dialog over an open quick-settings popup is wrong twice:
+        // the popup stays drawn underneath, and pushModal() has to take the
+        // keyboard off the panel's own grab. The panel drops it on close.
+        Main.panel.statusArea.quickSettings?.menu.close();
 
-        this._modeItem = new PopupMenu.PopupSubMenuMenuItem(_('Mode'));
-        this._mirrorItem = new PopupMenu.PopupMenuItem(_('Mirror this screen'));
-        this._extendItem = new PopupMenu.PopupMenuItem(_('Extend onto the display'));
-        this._mirrorItem.connect('activate', () => this._onSetMode('mirror'));
-        this._extendItem.connect('activate', () => this._onSetMode('extend'));
-        this._modeItem.menu.addMenuItem(this._mirrorItem);
-        this._modeItem.menu.addMenuItem(this._extendItem);
+        if (!this._dialog) {
+            this._dialog = new CastDialog({
+                client: this._client,
+                settings: this._settings,
+                displayModes: this._displayModes,
+                // The same Set the toggle filters: ticking two displays and
+                // then closing the dialog by accident must not lose them.
+                selection: this._selected,
+                actions: {
+                    connect: () => this._onConnect(),
+                    stop: () => this._onStop(),
+                    disconnect: id => this._onDisconnect(id),
+                    setMode: mode => this._onSetMode(mode),
+                    toggleDevice: id => this._onToggleDevice(id),
+                    openPreferences: () => this._extension.openPreferences(),
+                    report: e => this._reportFailure(e),
+                },
+            });
+            // ModalDialog destroys itself on close, so this is also how the
+            // reference is dropped. A closed dialog is therefore never
+            // synced: there are no actors left to update rather than a flag
+            // saying not to.
+            this._dialog.connect('destroy', () => {
+                this._dialog = null;
+            });
+        }
 
-        this._displayOnlyItem = new PopupMenu.PopupSwitchMenuItem(
-            _('Turn off this computer\'s screens'),
-            this._settings.get_boolean('cast-display-only'));
-        this._displayOnlyItem.connect('toggled', (_item, value) => {
-            this._settings.set_boolean('cast-display-only', value);
-        });
-        this._modeItem.menu.addMenuItem(this._displayOnlyItem);
-        this.menu.addMenuItem(this._modeItem);
-
-        // Only meaningful with more than one physical screen, so it is
-        // added hidden and revealed once we know (see _syncLocalScreens).
-        this._localItem = new PopupMenu.PopupSubMenuMenuItem(
-            _('This computer\'s screens'));
-        this._localMirrorItem = new PopupMenu.PopupMenuItem(_('Mirror them'));
-        this._localMirrorItem.connect('activate', () => {
-            this._displayModes?.mirrorLocalScreens()
-                .catch(e => this._reportFailure(e));
-        });
-        this._localItem.menu.addMenuItem(this._localMirrorItem);
-        this._localItem.visible = false;
-        this.menu.addMenuItem(this._localItem);
-
-        this._speakersItem = new PopupMenu.PopupSwitchMenuItem(
-            _('Show speakers'), this._settings.get_boolean('cast-show-speakers'));
-        this._speakersItem.connect('toggled', (_item, value) => {
-            this._settings.set_boolean('cast-show-speakers', value);
-        });
-        this.menu.addMenuItem(this._speakersItem);
-
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-
-        this._settingsItem = new PopupMenu.PopupMenuItem(_('Cast Display settings'));
-        this._settingsItem.connect('activate', () => {
-            this._extension.openPreferences();
-        });
-        this.menu.addMenuItem(this._settingsItem);
+        this._dialog.open();
+        if (this._client.available)
+            this._client.refresh().catch(() => {});
     }
 
     // -- tile --------------------------------------------------------------
 
     _onTileClicked() {
-        // The tile means "cast or stop", not "arm a feature". Turning it off
-        // stops what is running; turning it on opens the picker.
-        if (this._client.isStreaming || this._client.isBusy) {
+        const {action, deviceIds} = chooseTileAction({
+            available: this._client.available,
+            outdated: this._client.outdated,
+            streaming: this._client.isStreaming,
+            busy: this._client.isBusy,
+        }, this._settings.get_strv('cast-last-devices'), this._client.devices);
+
+        switch (action) {
+        case TileAction.STOP:
             this._onStop();
-        } else {
-            this._syncing = true;
-            this.checked = false;
-            this._syncing = false;
-            this.menu.open();
+            break;
+        case TileAction.RESUME:
+            this._resume(deviceIds);
+            break;
+        default:
+            // PICK and NOTHING both open the dialog, for different reasons:
+            // one to choose a receiver, one to read why there is none to
+            // choose. _sync() un-latches the tile that toggleMode just
+            // checked, so it never claims to cast while the picker is up.
+            this._sync();
+            this.openDialog();
         }
+    }
+
+    async _resume(ids) {
+        // Optimistic, and corrected by the next _sync(): StartCast returns
+        // in tens of milliseconds but the receivers take seconds, and a tile
+        // that sits unchecked in between reads as "the click did nothing".
+        this._syncTile(true, _('Starting…'));
+        try {
+            await this._client.startCast(ids, this._streamOptions());
+            this._rememberDevices(ids);
+        } catch (e) {
+            this._reportFailure(e);
+            this._sync();
+            // The resume failed, so the picker is the honest next step.
+            this.openDialog();
+        }
+    }
+
+    _rememberDevices(ids) {
+        const keep = rememberableDevices(ids, this._client.devices);
+        if (keep.length)
+            this._settings.set_strv('cast-last-devices', keep);
     }
 
     // -- actions -----------------------------------------------------------
@@ -343,7 +243,7 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
     async _onConnect() {
         const ids = [...this._selected];
         if (!ids.length) {
-            this._setStatus(_('Select a display first'));
+            this._dialog?.sync();
             return;
         }
         try {
@@ -352,6 +252,7 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
                 await this._client.addDevices(stream.stream_id, ids);
             else
                 await this._client.startCast(ids, this._streamOptions());
+            this._rememberDevices(ids);
             this._selected.clear();
         } catch (e) {
             this._reportFailure(e);
@@ -410,7 +311,7 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
             } else {
                 this._client.openMiracast().catch(e => this._reportFailure(e));
             }
-            this.menu.close();
+            this._dialog?.close();
             return;
         }
         if (device.video_capable === false)
@@ -461,192 +362,36 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
 
     // -- sync --------------------------------------------------------------
 
-    _setStatus(text) {
-        if (this._destroyed)
-            return;
-        this._statusItem.label.text = text;
-        this._statusItem.visible = !!text;
-    }
-
     _sync() {
         if (this._destroyed)
             return;
 
         const client = this._client;
 
-        if (!client.available) {
-            this._setStatus(_('The cast helper is not running'));
-            this._showControls({connect: false, stop: false, mode: false});
-            this._clearRows();
-            this._syncTile(false, _('Unavailable'));
-            return;
-        }
-        if (client.outdated) {
-            this._setStatus(client.outdatedMessage);
-            this._showControls({connect: false, stop: false, mode: false});
-            this._clearRows();
-            this._syncTile(false, _('Outdated helper'));
-            return;
-        }
-
-        const state = client.state;
-        const sessions = client.sessions;
-        const sessionById = new Map(sessions.map(s => [s.device_id, s]));
-        const streaming = state === 'streaming';
-
-        this._syncRows(sessionById);
-        this._syncStatus(state, sessions);
-        this._showControls({
-            connect: !streaming || this._selected.size > 0,
-            stop: streaming || state === 'starting',
-            mode: streaming || sessions.length === 0,
-        });
-        this._syncModeChecks();
-        this._syncLocalScreens();
-        this._syncTile(streaming || state === 'starting',
-            this._subtitleFor(state, sessions));
-        this._syncPresentation(streaming);
-    }
-
-    _syncRows(sessionById) {
-        const showSpeakers = this._settings.get_boolean('cast-show-speakers');
-        const devices = this._client.devices.filter(device => {
-            // The Miracast hand-off reports video_capable false because it
-            // is not a cast target, but it is not a speaker either and must
-            // always be listed.
-            if (device.protocol === 'miracast-handoff')
-                return true;
-            if (device.video_capable === false)
-                return showSpeakers;
-            return true;
-        });
-
-        const seen = new Set();
-        for (const device of devices) {
-            seen.add(device.id);
-            let row = this._rows.get(device.id);
-            if (!row) {
-                row = new DeviceRow(device, {
-                    onToggle: id => this._onToggleDevice(id),
-                    onDisconnect: id => this._onDisconnect(id),
-                });
-                this._rows.set(device.id, row);
-                this._deviceSection.addMenuItem(row);
+        // Forget a ticked display that stopped being discovered. This used
+        // to happen alongside the rows, which cannot work now the picker may
+        // be closed. The emptiness guard matters: a transient empty Devices
+        // property is routine and must not wipe what the user ticked.
+        if (client.devices.length) {
+            const known = new Set(client.devices.map(d => d.id));
+            for (const id of [...this._selected]) {
+                if (!known.has(id))
+                    this._selected.delete(id);
             }
-            row.update(device, sessionById.get(device.id) ?? null,
-                this._selected.has(device.id));
         }
 
-        // Remove only what actually went away.
-        for (const [id, row] of [...this._rows]) {
-            if (seen.has(id))
-                continue;
-            this._rows.delete(id);
-            this._selected.delete(id);
-            row.destroy();
-        }
-    }
-
-    _clearRows() {
-        for (const [, row] of this._rows)
-            row.destroy();
-        this._rows.clear();
-        this._selected.clear();
-    }
-
-    _syncStatus(state, sessions) {
-        if (state === 'starting') {
-            this._setStatus(_('Starting…'));
-            return;
-        }
-        if (state === 'stopping') {
-            this._setStatus(_('Stopping…'));
-            return;
-        }
-        if (state === 'error') {
-            this._setStatus(this._client.lastError || _('Something went wrong'));
-            return;
-        }
-        if (state === 'streaming') {
-            const stream = this._client.activeStream;
-            const mode = stream?.mode === 'extend' ? _('Extending') : _('Mirroring');
-            const playing = sessions.filter(s => s.state === 'playing').length;
-            this._setStatus(
-                `${mode} ${playing}/${sessions.length} ${_('ready')}`);
-            return;
-        }
-        if (!this._rows.size) {
-            this._setStatus(_('Looking for displays…'));
-            return;
-        }
-        this._setStatus(this._selected.size
-            ? `${this._selected.size} ${_('selected')}`
-            : _('Select a display, then Connect'));
-    }
-
-    _showControls({connect, stop, mode}) {
-        this._connectItem.visible = connect;
-        this._connectItem.label.text = this._client.isStreaming
-            ? _('Add selected') : _('Connect');
-        this._stopItem.visible = stop;
-        this._modeItem.visible = mode;
-        this._actionSeparator.visible = connect || stop;
-        const caps = this._client.capabilities;
-        this._extendItem.sensitive = caps.virtual_source !== false;
-    }
-
-    _syncLocalScreens() {
-        if (!this._displayModes?.available || this._localScreensPending)
-            return;
-        this._localScreensPending = true;
-        this._displayModes.physicalMonitors().then(monitors => {
-            this._localScreensPending = false;
-            if (this._destroyed)
-                return;
-            // The brief: show local layout actions only when 2+ physical
-            // monitors exist. On a single-screen laptop they are no-ops.
-            this._localItem.visible = monitors.length >= 2;
-            if (monitors.length < 2)
-                return;
-            this._rebuildLocalScreenItems(monitors);
-        }).catch(() => {
-            this._localScreensPending = false;
-        });
-    }
-
-    _rebuildLocalScreenItems(monitors) {
-        const signature = monitors.map(m => m.connector).join(',');
-        if (signature === this._localSignature)
-            return;
-        this._localSignature = signature;
-
-        for (const item of this._localOnlyItems ?? [])
-            item.destroy();
-        this._localOnlyItems = [];
-
-        for (const monitor of monitors) {
-            const name = monitor.displayName || monitor.connector;
-            const item = new PopupMenu.PopupMenuItem(
-                `${_('Use only')} ${name}`);
-            item.connect('activate', () => {
-                this._displayModes?.useOnlyLocalScreen(monitor.connector)
-                    .catch(e => this._reportFailure(e));
-            });
-            this._localItem.menu.addMenuItem(item);
-            this._localOnlyItems.push(item);
-        }
-    }
-
-    _syncModeChecks() {
-        const mode = this._client.activeStream?.mode ??
-            this._settings.get_string('cast-mode');
-        this._mirrorItem.setOrnament(mode === 'mirror'
-            ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NONE);
-        this._extendItem.setOrnament(mode === 'extend'
-            ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NONE);
+        const streaming = client.isStreaming;
+        this._syncTile(streaming || client.state === 'starting',
+            this._subtitleFor(client.state, client.sessions));
+        this._syncPresentation(streaming);
+        this._dialog?.sync();
     }
 
     _subtitleFor(state, sessions) {
+        if (!this._client.available)
+            return _('Unavailable');
+        if (this._client.outdated)
+            return _('Outdated helper');
         if (state === 'starting')
             return _('Starting…');
         if (state === 'stopping')
@@ -687,11 +432,27 @@ class CastDisplayMenuToggle extends QuickSettings.QuickMenuToggle {
             }
         }
         this._signals = [];
+
+        // Hand the dropdown back, so nothing is left holding a closure over
+        // a destroyed toggle.
+        if (this._realMenuOpen && this.menu) {
+            this.menu.open = this._realMenuOpen;
+            this._realMenuOpen = null;
+        }
+
+        if (this._dialog) {
+            try {
+                this._dialog.destroy();
+            } catch (e) {
+                _warn('Cast dialog destroy failed', e);
+            }
+            this._dialog = null;
+        }
     }
 
     destroy() {
         this._releaseSignals();
-        this._clearRows();
+        this._selected.clear();
         super.destroy();
     }
 });

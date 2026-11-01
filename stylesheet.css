@@ -76,3 +76,86 @@
     font-weight: bold;
     margin-left: 2px;
 }
+
+/* The cast dialog.
+ *
+ * It replaces the Quick Settings dropdown, which had no scroll view and no
+ * height bound and so ran off the bottom of a laptop panel. Only the device
+ * list grows; everything else is fixed, and the list's max-height is set
+ * from the work area at runtime (see lib/dialogMetrics.js).
+ *
+ * The width stays at the 28em the Shell's own .prompt-dialog uses, so the
+ * theme's `.modal-dialog .modal-dialog-content-box { max-width: 28em }`
+ * caps nothing and there is no specificity fight to lose. */
+.cast-dialog {
+    width: 28em;
+}
+
+.cast-dialog-content {
+    spacing: 12px;
+}
+
+.cast-dialog-header {
+    spacing: 12px;
+}
+
+.cast-dialog-icon {
+    icon-size: 32px;
+}
+
+.cast-dialog-title {
+    font-weight: bold;
+}
+
+.cast-dialog-list-scroll {
+    /* max-height comes from _applyHeightBudget(); this is the floor that
+     * keeps an empty list from collapsing to nothing while discovery runs. */
+    min-height: 48px;
+}
+
+.cast-dialog-list {
+    spacing: 2px;
+}
+
+/* Device rows were built for a menu, so they arrive with a menu's square
+ * corners. Round them to sit inside a dialog. */
+.cast-dialog-list .popup-menu-item {
+    border-radius: 8px;
+}
+
+.cast-dialog-section {
+    spacing: 6px;
+}
+
+.cast-dialog-section-title {
+    font-weight: bold;
+    font-size: 0.9em;
+}
+
+.cast-dialog-section-detail {
+    font-size: 0.85em;
+    opacity: 0.7;
+}
+
+/* Mirror | Extend, and the local-screen actions. The Shell themes
+ * .button:checked with the accent colour, so the active half needs no
+ * colour of its own here. */
+.cast-dialog-segmented {
+    spacing: 6px;
+}
+
+.cast-dialog-segment:insensitive {
+    opacity: 0.5;
+}
+
+/* A switch row: label on the left, toggle on the right, and the whole row
+ * is the hit target. */
+.cast-dialog-row {
+    padding: 6px 12px;
+    border-radius: 8px;
+}
+
+.cast-dialog-link {
+    padding: 6px 12px;
+    border-radius: 8px;
+}
